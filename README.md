@@ -4,7 +4,7 @@
 
 ## Introducción
 
-Este proyecto es una demostración práctica para aprender conceptos fundamentales de Soroban y el desarrollo de contratos inteligentes.  
+Este proyecto es una demostración práctica para aprender conceptos fundamentales de Soroban y el desarrollo de contratos inteligentes.
 Fue creado para el workshop de BAF en el marco del Stellar GIVE Hackathon Argentina 2025.
 
 Se trata de un contrato básico de crowdfunding en Rust que permite a creadores lanzar campañas con metas de recaudación, aceptar contribuciones, y gestionar retiros y reembolsos.
@@ -40,8 +40,8 @@ cargo install --locked stellar-cli@23.0.0
 
 ## Extensiones para VS Code
 
-1️⃣ Even Better TOML  
-2️⃣ CodeLLDB (debugging paso a paso)  
+1️⃣ Even Better TOML
+2️⃣ CodeLLDB (debugging paso a paso)
 3️⃣ Rust Analyzer (soporte para Rust)
 
 ---
@@ -102,11 +102,11 @@ _Nota: devuelve `GDXAECCYWYW2QKQDTGVQUTC6CQEQR3REC3PKZKXOP76PJJ6V3FRYXCO3`_
 5️⃣ Deployar el contrato en la Testnet y obtener el contract ID
 
 ```bash
-    stellar contract deploy `
-        --wasm target/wasm32v1-none/release/<contract_name>.optimized.wasm `
-        --source admin `
-        --network testnet `
-        -- `
+        stellar contract deploy \
+        --wasm target/wasm32v1-none/release/<contract_name>.optimized.wasm \
+        --source admin \
+        --network testnet \
+        -- \
         --admin <admin_public_key>
         --token <token_address>
 ```
@@ -175,11 +175,11 @@ enum Errors {
 ### Create Campaign
 
 ```bash
-    stellar contract deploy `
-        --wasm target/wasm32v1-none/release/<contract_name>.optimized.wasm `
-        --source admin `
-        --network testnet `
-        -- create_campaign `
+        stellar contract deploy \
+        --wasm target/wasm32v1-none/release/<contract_name>.optimized.wasm \
+        --source admin \
+        --network testnet \
+        -- create_campaign \
         --creator <creator_public_key>
         --goal 100000000
 ```
@@ -187,11 +187,11 @@ enum Errors {
 ### Get Campaign
 
 ```bash
-    stellar contract deploy `
-        --wasm target/wasm32v1-none/release/<contract_name>.optimized.wasm `
-        --source admin `
-        --network testnet `
-        -- get_campaign `
+        stellar contract deploy \
+        --wasm target/wasm32v1-none/release/<contract_name>.optimized.wasm \
+        --source admin \
+        --network testnet \
+        -- get_campaign \
         --campaign_address <creator_public_key>
 ```
 
