@@ -1,5 +1,7 @@
-# ReFinance
+# ReFinance - Transparent Crowdfunding Platform
 ## Project Description
+
+ReFinance is a revolutionary crowdfunding platform built on the Stellar blockchain that combines traditional crowdfunding with verifiable transparency through on-chain proof attestation and NFT milestone representation.
 **Transparent Disbursement System for Foundations (TDSF)**
 
 Se trata de un contrato básico de crowdfunding en Rust que permite a fundaciones lanzar campañas con metas de recaudación, aceptar contribuciones, y gestionar retiros y reembolsos.
@@ -24,6 +26,13 @@ The process works as follows:
 * **Tokenization of Impact:** NFTs are not only proof but also an innovative way for foundations to showcase and celebrate their accomplishments, creating a verifiable history of their work.
 
 ---
+
+## Architecture
+
+The platform consists of two main smart contracts:
+
+1. **Crowdfunding Contract** (`baf-crowdfunding-contract`): Core crowdfunding functionality with proof attestation
+2. **Milestone NFT Contract** (`milestone-nft-contract`): NFT minting for verified milestones
 
 ### Future Vision
 Our long-term goal is to take transparency one step further. We aim to integrate the system so that disbursements are made **directly to suppliers** (e.g., the materials provider or catering service), completely eliminating the possibility of fund diversion. This would ensure that every donated dollar directly translates into a good or service for the final beneficiary.
@@ -125,7 +134,9 @@ _Nota: devuelve `CBAH4Z5CNELXMN7PVW2SAAB6QVOID34SAQAFHJF7Q7JUNACRQEJX66MB`_
 
 ---
 
-## Funciones del Contrato
+## Smart Contracts
+
+### Crowdfunding Contract Functions
 
 | Función           | Descripción                                                              | Firma                                                                                  |
 | ----------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
@@ -136,6 +147,7 @@ _Nota: devuelve `CBAH4Z5CNELXMN7PVW2SAAB6QVOID34SAQAFHJF7Q7JUNACRQEJX66MB`_
 | `withdraw`        | Permite al creador retirar fondos si goal fue alcanzado                  | `(creator: address) -> Result<(), Error>`                                              |
 | `refund`          | Permite a un contribuyente retirar su aporte si la campaña no tuvo éxito | `(contributor: address, campaign_address: address) -> Result<(), Error>`               |
 | `log_proof`       | Registra una prueba de gasto para una campaña (solo admin)               | `(campaign: address, uri: BytesN<64>, desc: BytesN<128>) -> Result<(), Error>`        |
+|
 | `get_proof`       | Obtiene los datos de una prueba específica por índice                    | `(campaign: address, index: u32) -> Result<Proof, Error>`                             |
 
 ---
@@ -190,7 +202,9 @@ enum Errors {
 
 ---
 
-## Funciones del contrato desde el Stellar CLI
+## Contract Functions from Stellar CLI
+
+### Crowdfunding Contract Commands
 
 ### Create Campaign
 
@@ -265,6 +279,25 @@ enum Errors {
 | 100 XLM | 1,000,000,000 | 100 XLM en stroops                      |
 
 ---
+
+## Integration Workflow
+
+1. **Campaign Creation**: Foundation creates a crowdfunding campaign
+2. **Contribution**: Supporters contribute funds to the campaign
+3. **Proof Submission**: Foundation submits proof of milestone completion
+4. **Proof Validation**: Admin validates the submitted proof
+5. **NFT Minting**: Validated proof triggers automatic NFT creation
+6. **Milestone Verification**: NFT serves as immutable proof of achievement
+7. **Fund Release**: Validated milestones enable fund withdrawal
+8. **Transparency**: Public can verify progress through NFT ownership
+
+## Benefits
+
+- **Trust**: Immutable on-chain proof of milestone completion
+- **Transparency**: Public verification of campaign progress
+- **Accountability**: Funds released only upon verified milestones
+- **Innovation**: NFTs as proof of achievement and trust building
+- **Decentralization**: Reduced reliance on centralized oversight
 
 ## Conclusion
 
