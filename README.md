@@ -1,15 +1,35 @@
-# Crowdfunding Contract - Soroban Workshop
+# ReFinance
+## Project Description
+**Transparent Disbursement System for Foundations (TDSF)**
 
-**Technical Bootcamp Part I: Soroban & Architecture Fundamentals**
+Se trata de un contrato básico de crowdfunding en Rust que permite a fundaciones lanzar campañas con metas de recaudación, aceptar contribuciones, y gestionar retiros y reembolsos.
 
-## Introducción
+### Problem Description
+A persistent challenge for non-profit organizations is the lack of transparency in fund management. Donors often have no visibility into how their contributions are spent, which can lead to a decline in trust and, potentially, a reduction in donations. Foundations, in turn, struggle to efficiently and credibly demonstrate their impact and accountability.
 
-Este proyecto es una demostración práctica para aprender conceptos fundamentales de Soroban y el desarrollo de contratos inteligentes.
-Fue creado para el workshop de BAF en el marco del Stellar GIVE Hackathon Argentina 2025.
+### Our Solution: Verifiable Transparency with Blockchain
+We propose a fund management system that uses blockchain technology to create a **transparent and conditional disbursement flow**. Instead of transferring all funds to foundations at once, our platform disburses money in stages, contingent on the fulfillment of predefined objectives.
 
-Se trata de un contrato básico de crowdfunding en Rust que permite a creadores lanzar campañas con metas de recaudación, aceptar contribuciones, y gestionar retiros y reembolsos.
+The process works as follows:
+1.  **Defining Milestones and Objectives:** Foundations and donors collaborate to establish a detailed project plan with clear, verifiable milestones and goals.
+2.  **Uploading Immutable Evidence:** As the foundation meets each milestone (e.g., purchasing materials or completing a project phase), it uploads proof (invoices, photos, videos, etc.) to the blockchain. This evidence, once registered, is immutable and publicly accessible.
+3.  **NFTs as Proof of Impact:** Each completed and verified milestone generates a **unique NFT**. These NFTs are not just collectibles; they are **immutable records of the foundation's social impact**. They serve as a verifiable portfolio of achievements that foundations can use to attract future donors and demonstrate their effectiveness.
+4.  **Conditional Disbursements:** Once the evidence is registered on the blockchain and verified (either through an automated process or a governance mechanism), the next tranche of funds is automatically released to the foundation.
 
 ---
+
+### Key Features
+* **Total Transparency:** All disbursements, proofs, and achievements are recorded on the blockchain, allowing anyone to verify how the funds are used.
+* **Automated Accountability:** The system streamlines auditing by requiring proof before releasing funds, eliminating the need for lengthy manual processes.
+* **Tokenization of Impact:** NFTs are not only proof but also an innovative way for foundations to showcase and celebrate their accomplishments, creating a verifiable history of their work.
+
+---
+
+### Future Vision
+Our long-term goal is to take transparency one step further. We aim to integrate the system so that disbursements are made **directly to suppliers** (e.g., the materials provider or catering service), completely eliminating the possibility of fund diversion. This would ensure that every donated dollar directly translates into a good or service for the final beneficiary.
+
+### Hackathon Relevance
+This project directly addresses the theme of transparency and trust in the social sector, using decentralized technologies to solve a critical problem. It's a practical solution that demonstrates the potential of blockchain to generate real and verifiable social impact.
 
 ## Setup
 
@@ -198,11 +218,11 @@ enum Errors {
 ### Add Contribution
 
 ```bash
-    stellar contract deploy `
-        --wasm target/wasm32v1-none/release/<contract_name>.optimized.wasm `
-        --source <contributor_secret_key> `
-        --network testnet `
-        -- contribute `
+        stellar contract deploy \
+        --wasm target/wasm32v1-none/release/<contract_name>.optimized.wasm \
+        --source <contributor_secret_key> \
+        --network testnet \
+        -- contribute \
         --contributor <contributor_public_key>
         --campaign_address <creator_public_key>
         --amount 100000000
