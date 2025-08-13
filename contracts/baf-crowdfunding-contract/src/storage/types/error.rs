@@ -15,4 +15,5 @@ pub enum Error {
     CampaignGoalNotReached = 8,
     ContributionNotFound = 9,
     CampaignAlreadyExists = 10,
+    ProofNotFound = 11,
 }

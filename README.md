@@ -43,11 +43,7 @@ https://developers.stellar.org/docs/build/smart-contracts/getting-started/setup
 Luego instala el target WASM según tu versión de Rustc:
 
 ```bash
-# Si tienes rustc 1.85 o superior
 rustup target add wasm32v1-none
-
-# Si tienes rustc menor a 1.85
-rustup target add wasm32-unknown-unknown
 ```
 
 ### Instalar Stellar CLI
@@ -82,9 +78,6 @@ stellar keys generate --global alice --network testnet --fund
 ```bash
 # Si tienes rustc 1.85 o superior
   cargo build --target wasm32v1-none --release
-
-# Si tienes rustc menor a 1.85
-  cargo build --target wasm32-unknown-unknown --release
 ```
 
 2️⃣ Optimizar el contrato para reducir su tamaño en bytes
@@ -92,9 +85,6 @@ stellar keys generate --global alice --network testnet --fund
 ```bash
 # Si tienes rustc 1.85 o superior
    stellar contract optimize --wasm target/wasm32v1-none/release/<contract_name>.wasm
-
-# Si tienes rustc menor a 1.85
- stellar contract optimize --wasm target/wasm32-unknown-unknown/release/<contract_name>.wasm
 ```
 
 1️⃣ Generar Admin Keypair para las pruebas
@@ -145,6 +135,8 @@ _Nota: devuelve `CBAH4Z5CNELXMN7PVW2SAAB6QVOID34SAQAFHJF7Q7JUNACRQEJX66MB`_
 | `contribute`      | Permite a un usuario aportar a una campaña                               | `(contributor: address, campaign_address: address, amount: i128) -> Result<(), Error>` |
 | `withdraw`        | Permite al creador retirar fondos si goal fue alcanzado                  | `(creator: address) -> Result<(), Error>`                                              |
 | `refund`          | Permite a un contribuyente retirar su aporte si la campaña no tuvo éxito | `(contributor: address, campaign_address: address) -> Result<(), Error>`               |
+| `log_proof`       | Registra una prueba de gasto para una campaña (solo admin)               | `(campaign: address, uri: BytesN<64>, desc: BytesN<128>) -> Result<(), Error>`        |
+| `get_proof`       | Obtiene los datos de una prueba específica por índice                    | `(campaign: address, index: u32) -> Result<Proof, Error>`                             |
 
 ---
 
@@ -153,15 +145,22 @@ _Nota: devuelve `CBAH4Z5CNELXMN7PVW2SAAB6QVOID34SAQAFHJF7Q7JUNACRQEJX66MB`_
 ```rust
 #[contracttype]
 struct Campaign {
-  goal: i128,
-  min_donation: i128,
-  supporters: u32,
-  total_raised: i128,
+    goal: i128,
+    min_donation: i128,
+    supporters: u32,
+    total_raised: i128,
+    proofs_count: u32,
 }
 
 #[contracttype]
 struct Contribution {
-  amount: i128,
+    amount: i128,
+}
+
+struct Proof {
+    uri: BytesN<64>,        // URI del documento off-chain (ej: ipfs://<hash>)
+    description: BytesN<128>, // Descripción breve de la prueba
+    timestamp: u64,         // Timestamp cuando se registró la prueba
 }
 
 #[contracttype]
@@ -185,6 +184,7 @@ enum Errors {
   CampaignGoalNotReached = 8,
   ContributionNotFound = 9,
   CampaignAlreadyExists = 10,
+  ProofNotFound = 11,
 }
 ```
 
@@ -226,6 +226,31 @@ enum Errors {
         --contributor <contributor_public_key>
         --campaign_address <creator_public_key>
         --amount 100000000
+```
+
+### Log Proof (Solo Admin)
+
+```bash
+        stellar contract deploy \
+        --wasm target/wasm32v1-none/release/<contract_name>.optimized.wasm \
+        --source admin \
+        --network testnet \
+        -- log_proof \
+        --campaign <creator_public_key> \
+        --uri <proof_uri_64_bytes> \
+        --desc <proof_description_128_bytes>
+```
+
+### Get Proof
+
+```bash
+        stellar contract deploy \
+        --wasm target/wasm32v1-none/release/<contract_name>.optimized.wasm \
+        --source admin \
+        --network testnet \
+        -- get_proof \
+        --campaign <creator_public_key> \
+        --index 0
 ```
 
 ---

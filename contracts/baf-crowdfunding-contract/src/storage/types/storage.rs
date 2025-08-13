@@ -7,4 +7,5 @@ pub enum DataKey {
     Token,
     Campaign(Address),
     Contribution(Address, Address), // (campaign_address, contributor)
+    Proof(Address, u32),            // (campaign_address, proof_index)
 }

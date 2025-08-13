@@ -3,6 +3,6 @@
 mod contract;
 mod events;
 mod methods;
-mod storage;
+pub mod storage;
 
-pub use contract::CrowdfundingContract;
+pub use contract::{CrowdfundingContract, CrowdfundingContractClient};

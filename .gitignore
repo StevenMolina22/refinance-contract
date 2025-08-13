@@ -5,3 +5,6 @@ target
 .soroban
 .stellar
 temp
+repomix.config.json
+.repomixignore
+.env

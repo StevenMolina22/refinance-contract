@@ -1,7 +1,9 @@
-pub mod initialize;
 pub mod add_campaign;
 pub mod contribute;
+pub mod get_campaign;
+pub mod get_proof;
+pub mod initialize;
+pub mod log_proof;
+pub mod refund;
 pub mod token;
 pub mod withdraw;
-pub mod refund;
-pub mod get_campaign;
