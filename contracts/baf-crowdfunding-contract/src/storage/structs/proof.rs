@@ -1,5 +1,8 @@
 use soroban_sdk::{contracttype, BytesN};
 
+// TODO! Add campaign ID
+// TODO! Add proof deadline
+// TODO! Add valid proof counter (n people who validated it)
 #[derive(Clone)]
 #[contracttype]
 pub struct Proof {
