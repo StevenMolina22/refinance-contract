@@ -1,4 +1,4 @@
-use soroban_sdk::{contracttype, BytesN};
+use soroban_sdk::{contracttype, String};
 
 // TODO! Add campaign ID
 // TODO! Add proof deadline
@@ -7,9 +7,9 @@ use soroban_sdk::{contracttype, BytesN};
 #[contracttype]
 pub struct Proof {
     /// URI pointing to the off-chain proof data (e.g., ipfs://<hash>)
-    pub uri: BytesN<64>,
+    pub uri: String,
     /// Short description of the proof
-    pub description: BytesN<128>,
+    pub description: String,
     /// Ledger timestamp when the proof was logged
     pub timestamp: u64,
 }

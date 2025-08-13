@@ -39,8 +39,8 @@ fn test_compilation_of_new_types() {
 
     // Test that Proof struct compiles
     use baf_crowdfunding_contract::storage::structs::proof::Proof;
-    let uri: BytesN<64> = BytesN::random(&env);
-    let description: BytesN<128> = BytesN::random(&env);
+    let uri = soroban_sdk::String::from_str(&env, "https://example.com/proof");
+    let description = soroban_sdk::String::from_str(&env, "https://example.com/proof");
     let _proof = Proof {
         uri,
         description,

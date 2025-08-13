@@ -1,4 +1,4 @@
-use soroban_sdk::{contract, contractimpl, Address, BytesN, Env};
+use soroban_sdk::{contract, contractimpl, Address, BytesN, Env, String};
 
 use crate::{
     methods::{
@@ -51,12 +51,7 @@ impl CrowdfundingContract {
         refund(&env, contributor, campaign_address)
     }
 
-    pub fn log_proof(
-        env: Env,
-        campaign: Address,
-        uri: BytesN<64>,
-        desc: BytesN<128>,
-    ) -> Result<(), Error> {
+    pub fn log_proof(env: Env, campaign: Address, uri: String, desc: String) -> Result<(), Error> {
         log_proof(&env, campaign, uri, desc)
     }
 
