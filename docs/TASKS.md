@@ -6,6 +6,23 @@
 
 ## Completed Tasks
 
+### Integrate Milestone Logic in Crowdfunding Contracts - 2025-01-20 ✅
+Implement milestone-based crowdfunding system with String-based identifiers including:
+- [x] Update error types to include milestone-related errors
+- [x] Create Milestone struct with String-based campaign IDs
+- [x] Update Campaign struct to include milestone fields and String IDs
+- [x] Update Proof struct to include campaign_id and id fields
+- [x] Update DataKey enum for String-based keys and milestone storage
+- [x] Create milestone storage module
+- [x] Implement milestone methods (create, get, get_campaign_milestones)
+- [x] Create proof-milestone integration methods
+- [x] Update withdraw function for milestone-based withdrawals
+- [x] Update contract interface to expose milestone functions
+- [x] Update existing methods to work with String-based campaign IDs
+- [x] Add milestone events for off-chain indexing
+- [x] Successfully compiles and builds to WASM
+- [x] Core milestone functionality implemented and tested
+
 ### Implement Attestation System - 2025-01-02 ✅
 Complete implementation of on-chain proof attestation system including:
 - [x] Create Proof struct in storage/structs/proof.rs

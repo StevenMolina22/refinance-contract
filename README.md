@@ -1,10 +1,10 @@
 # ReFinance - Transparent Crowdfunding Platform
 ## Project Description
 
-ReFinance is a revolutionary crowdfunding platform built on the Stellar blockchain that combines traditional crowdfunding with verifiable transparency through on-chain proof attestation and NFT milestone representation.
+ReFinance is a revolutionary crowdfunding platform built on the Stellar blockchain that combines traditional crowdfunding with verifiable transparency through on-chain proof attestation and milestone-based fund disbursement.
 **Transparent Disbursement System for Foundations (TDSF)**
 
-Se trata de un contrato básico de crowdfunding en Rust que permite a fundaciones lanzar campañas con metas de recaudación, aceptar contribuciones, y gestionar retiros y reembolsos.
+Se trata de un sistema avanzado de crowdfunding en Rust que permite a fundaciones lanzar campañas con hitos verificables, aceptar contribuciones, y gestionar retiros condicionados por logros comprobados.
 
 ### Problem Description
 A persistent challenge for non-profit organizations is the lack of transparency in fund management. Donors often have no visibility into how their contributions are spent, which can lead to a decline in trust and, potentially, a reduction in donations. Foundations, in turn, struggle to efficiently and credibly demonstrate their impact and accountability.
@@ -21,9 +21,11 @@ The process works as follows:
 ---
 
 ### Key Features
+* **Milestone-Based Disbursement:** Funds are released incrementally based on verified milestone completion
+* **String-Based Campaign IDs:** User-friendly campaign identification for better integration
 * **Total Transparency:** All disbursements, proofs, and achievements are recorded on the blockchain, allowing anyone to verify how the funds are used.
 * **Automated Accountability:** The system streamlines auditing by requiring proof before releasing funds, eliminating the need for lengthy manual processes.
-* **Tokenization of Impact:** NFTs are not only proof but also an innovative way for foundations to showcase and celebrate their accomplishments, creating a verifiable history of their work.
+* **Sequential Milestone Validation:** Ensures milestones are completed in order, preventing fund misuse
 
 ---
 
@@ -31,8 +33,8 @@ The process works as follows:
 
 The platform consists of two main smart contracts:
 
-1. **Crowdfunding Contract** (`baf-crowdfunding-contract`): Core crowdfunding functionality with proof attestation
-2. **Milestone NFT Contract** (`milestone-nft-contract`): NFT minting for verified milestones
+1. **Crowdfunding Contract** (`baf-crowdfunding-contract`): Core crowdfunding functionality with milestone-based fund management
+2. **Milestone NFT Contract** (`milestone-nft-contract`): NFT minting for verified milestones (future integration)
 
 ### Future Vision
 Our long-term goal is to take transparency one step further. We aim to integrate the system so that disbursements are made **directly to suppliers** (e.g., the materials provider or catering service), completely eliminating the possibility of fund diversion. This would ensure that every donated dollar directly translates into a good or service for the final beneficiary.
@@ -138,17 +140,31 @@ _Nota: devuelve `CBAH4Z5CNELXMN7PVW2SAAB6QVOID34SAQAFHJF7Q7JUNACRQEJX66MB`_
 
 ### Crowdfunding Contract Functions
 
+#### Campaign Functions
 | Función           | Descripción                                                              | Firma                                                                                  |
 | ----------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
 | `__constructor`   | Inicializa el contrato con admin y token                                 | `(admin: address, token: address) -> Result<(), Error>`                                |
-| `create_campaign` | Crea una campaña con goal y min_donation                                 | `(creator: address, goal: i128, min_donation: i128) -> Result<(), Error>`              |
-| `get_campaign`    | Obtiene los datos de una campaña                                         | `(campaign_address: address) -> Result<Campaign, Error>`                               |
-| `contribute`      | Permite a un usuario aportar a una campaña                               | `(contributor: address, campaign_address: address, amount: i128) -> Result<(), Error>` |
-| `withdraw`        | Permite al creador retirar fondos si goal fue alcanzado                  | `(creator: address) -> Result<(), Error>`                                              |
-| `refund`          | Permite a un contribuyente retirar su aporte si la campaña no tuvo éxito | `(contributor: address, campaign_address: address) -> Result<(), Error>`               |
-| `log_proof`       | Registra una prueba de gasto para una campaña (solo admin)               | `(campaign: address, uri: BytesN<64>, desc: BytesN<128>) -> Result<(), Error>`        |
-|
-| `get_proof`       | Obtiene los datos de una prueba específica por índice                    | `(campaign: address, index: u32) -> Result<Proof, Error>`                             |
+| `create_campaign` | Crea una campaña con ID único y metadatos                               | `(campaign_id: String, creator: address, title: String, description: String, goal: i128, min_donation: i128) -> Result<(), Error>` |
+| `get_campaign`    | Obtiene los datos de una campaña por ID                                 | `(campaign_id: String) -> Result<Campaign, Error>`                               |
+
+#### Milestone Functions
+| Función               | Descripción                                                              | Firma                                                                                  |
+| --------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `create_milestone`    | Crea un hito para una campaña (solo creador)                           | `(campaign_id: String, target_amount: i128, description: String) -> Result<u32, Error>` |
+| `get_milestone`       | Obtiene datos de un hito específico                                     | `(campaign_id: String, sequence: u32) -> Result<Milestone, Error>`                   |
+| `get_campaign_milestones` | Obtiene todos los hitos de una campaña                              | `(campaign_id: String) -> Result<Vec<Milestone>, Error>`                             |
+
+#### Proof Functions
+| Función               | Descripción                                                              | Firma                                                                                  |
+| --------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `log_proof`           | Registra una prueba para una campaña (solo admin)                       | `(proof_id: String, campaign_id: String, uri: String, description: String) -> Result<(), Error>` |
+| `get_proof`           | Obtiene los datos de una prueba específica                              | `(campaign_id: String, proof_id: String) -> Result<Proof, Error>`                    |
+| `validate_milestone_with_proof` | Valida un hito con prueba (solo admin)                        | `(campaign_id: String, milestone_sequence: u32, proof_id: String) -> Result<(), Error>` |
+
+#### Withdrawal Functions
+| Función               | Descripción                                                              | Firma                                                                                  |
+| --------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `withdraw_milestone_funds` | Retira fondos hasta el hito completado (solo creador)             | `(campaign_id: String, milestone_sequence: u32) -> Result<i128, Error>`|
 
 ---
 
@@ -157,30 +173,49 @@ _Nota: devuelve `CBAH4Z5CNELXMN7PVW2SAAB6QVOID34SAQAFHJF7Q7JUNACRQEJX66MB`_
 ```rust
 #[contracttype]
 struct Campaign {
+    id: String,                  // Campaign identifier
+    creator: Address,
+    title: String,               // Campaign title
+    description: String,         // Campaign description
     goal: i128,
     min_donation: i128,
-    supporters: u32,
     total_raised: i128,
-    proofs_count: u32,
+    supporters: u32,
+    
+    // Milestone Management
+    milestones_count: u32,       // Total milestones for this campaign
+    current_milestone: u32,      // Latest completed milestone (0 = none)
+    withdrawable_amount: i128,   // Amount available for withdrawal
 }
 
 #[contracttype]
-struct Contribution {
-    amount: i128,
+struct Milestone {
+    campaign_id: String,
+    sequence: u32,               // 1, 2, 3... (order matters)
+    target_amount: i128,         // Funding needed to reach this milestone
+    description: String,         // What this milestone represents
+    completed: bool,             // Has this milestone been validated?
+    proof_id: Option<String>,    // Which proof validated this milestone
+    completed_at: Option<u64>,   // When was it completed
 }
 
+#[contracttype]
 struct Proof {
-    uri: BytesN<64>,        // URI del documento off-chain (ej: ipfs://<hash>)
-    description: BytesN<128>, // Descripción breve de la prueba
-    timestamp: u64,         // Timestamp cuando se registró la prueba
+    id: String,                  // Proof identifier
+    campaign_id: String,         // Which campaign this proof belongs to
+    uri: String,                 // IPFS or external URI
+    description: String,         // Description of the proof
+    timestamp: u64,              // When proof was submitted
 }
 
 #[contracttype]
 enum DataKey {
-  Admin(),
-  Token(),
-  Campaign(address),
-  Contribution(address, address),
+    Admin,
+    Token,
+    Campaign(String),              // String-based campaign ID
+    Contribution(String, Address), // (campaign_id, contributor)
+    Proof(String, String),         // (campaign_id, proof_id)
+    Milestone(String, u32),        // (campaign_id, sequence)
 }
 
 #[contracterror]
@@ -197,6 +232,17 @@ enum Errors {
   ContributionNotFound = 9,
   CampaignAlreadyExists = 10,
   ProofNotFound = 11,
+  InvalidGoalAmount = 12,
+  InvalidMinDonation = 13,
+  InvalidMilestoneAmount = 14,
+  MilestoneAmountNotIncreasing = 15,
+  MilestoneNotFound = 16,
+  MilestoneAlreadyCompleted = 17,
+  InsufficientFundsForMilestone = 18,
+  MilestoneNotInSequence = 19,
+  MilestoneNotCompleted = 20,
+  CannotWithdrawFutureMilestone = 21,
+  NoFundsToWithdraw = 22,
 }
 ```
 
@@ -280,23 +326,38 @@ enum Errors {
 
 ---
 
-## Integration Workflow
+## Milestone-Based Integration Workflow
 
-1. **Campaign Creation**: Foundation creates a crowdfunding campaign
-2. **Contribution**: Supporters contribute funds to the campaign
-3. **Proof Submission**: Foundation submits proof of milestone completion
-4. **Proof Validation**: Admin validates the submitted proof
-5. **NFT Minting**: Validated proof triggers automatic NFT creation
-6. **Milestone Verification**: NFT serves as immutable proof of achievement
-7. **Fund Release**: Validated milestones enable fund withdrawal
-8. **Transparency**: Public can verify progress through NFT ownership
+1. **Campaign Creation**: Foundation creates a crowdfunding campaign with String-based ID
+2. **Milestone Setup**: Foundation creates sequential milestones with target amounts
+3. **Contribution**: Supporters contribute funds to the campaign
+4. **Proof Submission**: Foundation submits proof of milestone completion
+5. **Proof Validation**: Admin validates submitted proof and links it to milestone
+6. **Sequential Validation**: Milestones must be completed in order (1, 2, 3...)
+7. **Fund Release**: Only validated milestones enable incremental fund withdrawal
+8. **Transparency**: Public can verify progress through on-chain milestone status
+
+### Example Workflow
+```
+1. Create campaign "medical-supplies-2024"
+2. Create milestones:
+   - Milestone 1: $5,000 (Purchase medical equipment)
+   - Milestone 2: $8,000 (Staff training completion)
+   - Milestone 3: $10,000 (Final implementation)
+3. Foundation submits proof-1 with receipts
+4. Admin validates proof-1 → Milestone 1 completed
+5. Foundation can withdraw $5,000
+6. Process repeats for subsequent milestones
+```
 
 ## Benefits
 
 - **Trust**: Immutable on-chain proof of milestone completion
-- **Transparency**: Public verification of campaign progress
-- **Accountability**: Funds released only upon verified milestones
-- **Innovation**: NFTs as proof of achievement and trust building
+- **Transparency**: Public verification of campaign progress through String-based IDs
+- **Accountability**: Funds released only upon verified sequential milestones
+- **Progressive Funding**: Incremental fund release based on demonstrated progress
+- **User-Friendly**: String-based campaign identification for better integration
+- **Sequential Logic**: Prevents milestone skipping and ensures proper progression
 - **Decentralization**: Reduced reliance on centralized oversight
 
 ## Conclusion

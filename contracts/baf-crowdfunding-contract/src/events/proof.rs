@@ -1,6 +1,17 @@
-use soroban_sdk::{Address, Env, Symbol};
+use soroban_sdk::{symbol_short, Env, String};
 
-pub(crate) fn proof_logged(env: &Env, campaign: &Address, index: &u32) {
-    let topics = (Symbol::new(env, "proof_logged"), campaign);
-    env.events().publish(topics, index);
+/// Event emitted when a proof is logged for a campaign
+pub(crate) fn proof_logged(env: &Env, campaign_id: &String, proof_id: &String) {
+    env.events().publish(
+        (symbol_short!("proof"), symbol_short!("logged")),
+        (campaign_id.clone(), proof_id.clone()),
+    );
+}
+
+/// Event emitted when a proof is validated
+pub(crate) fn proof_validated(env: &Env, campaign_id: &String, proof_id: &String) {
+    env.events().publish(
+        (symbol_short!("proof"), symbol_short!("validated")),
+        (campaign_id.clone(), proof_id.clone()),
+    );
 }

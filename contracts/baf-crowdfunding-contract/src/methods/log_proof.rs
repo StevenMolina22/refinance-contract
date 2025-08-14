@@ -1,39 +1,30 @@
 use crate::{
     events,
-    storage::{
-        admin::get_admin,
-        campaign::{get_campaign, set_campaign},
-        structs::proof::Proof,
-        types::{error::Error, storage::DataKey},
-    },
+    storage::{admin::get_admin, proof::set_proof, structs::proof::Proof, types::error::Error},
 };
-use soroban_sdk::{Address, Env, String};
+use soroban_sdk::{Env, String};
 
 pub fn log_proof(
     env: &Env,
-    campaign_address: Address,
+    proof_id: String,
+    campaign_id: String,
     uri: String,
     description: String,
 ) -> Result<(), Error> {
     let admin = get_admin(env);
     admin.require_auth();
 
-    let mut campaign = get_campaign(env, &campaign_address)?;
-    let proof_index = campaign.proofs_count;
-    campaign.proofs_count += 1;
-
     let proof = Proof {
+        id: proof_id.clone(),
+        campaign_id: campaign_id.clone(),
         uri,
         description,
         timestamp: env.ledger().timestamp(),
     };
 
-    let key = DataKey::Proof(campaign_address.clone(), proof_index);
-    env.storage().instance().set(&key, &proof);
+    set_proof(env, &campaign_id, &proof_id, &proof);
 
-    set_campaign(env, &campaign_address, &campaign);
-
-    events::proof::proof_logged(env, &campaign_address, &proof_index);
+    events::proof::proof_logged(env, &campaign_id, &proof_id);
 
     Ok(())
 }
