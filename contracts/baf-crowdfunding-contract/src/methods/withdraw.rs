@@ -1,32 +1,34 @@
-use soroban_sdk::{Address, Env};
-
 use crate::{
     events,
     methods::token::token_transfer,
     storage::{
         campaign::{get_campaign, remove_campaign},
-        types::error::Error
-    }
+        types::error::Error,
+    },
 };
+use soroban_sdk::{Env, String};
 
-pub fn withdraw(env: &Env, creator: Address) -> Result<(), Error> {
-    creator.require_auth();
+pub fn withdraw(env: &Env, campaign_id: String) -> Result<(), Error> {
+    let campaign = get_campaign(env, &campaign_id)?;
 
-    let campaign = get_campaign(env, &creator)?;
+    // Authorize the campaign creator
+    campaign.creator.require_auth();
 
-    if campaign.total_raised != campaign.goal {
+    // This logic is for a non-milestone, all-or-nothing campaign.
+    if campaign.total_raised < campaign.goal {
         return Err(Error::CampaignGoalNotReached);
     }
 
     token_transfer(
-        &env,
+        env,
         &env.current_contract_address(),
-        &creator,
-        &campaign.total_raised
+        &campaign.creator,
+        &campaign.total_raised,
     )?;
 
-    remove_campaign(env, &creator);
-    events::campaign::withdraw(&env, &creator, campaign.total_raised);
-    
+    // The campaign is now complete and can be removed.
+    remove_campaign(env, &campaign_id);
+    events::campaign::withdraw(env, &campaign.creator, campaign.total_raised);
+
     Ok(())
 }

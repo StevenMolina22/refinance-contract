@@ -6,6 +6,19 @@
 
 ## Completed Tasks
 
+### Update Contribute, Refund, and Withdraw Functions for String-based Campaign IDs - 2025-01-20 ✅
+Update legacy contribute, refund, and withdraw functions to work with the current contract architecture:
+- [x] Update contribute function to use String campaign_id instead of Address campaign_address
+- [x] Update refund function to use String campaign_id instead of Address campaign_address  
+- [x] Update withdraw function to use String campaign_id and proper creator authorization
+- [x] Fix contribute event to use String campaign_id
+- [x] Fix refund event to use String campaign_id
+- [x] Update methods/mod.rs to enable the updated functions
+- [x] Add functions to contract interface in contract.rs
+- [x] Fix event publishing to clone String values for Soroban SDK compatibility
+- [x] All tests passing successfully
+- [x] Contract compiles without errors
+
 ### Refactor Method Names to Use Consistent add/get Pattern - 2025-01-20 ✅
 Update all method names to use consistent "add" and "get" prefixes instead of "create" and "log":
 - [x] Rename `create_milestone` to `add_milestone` in milestone.rs

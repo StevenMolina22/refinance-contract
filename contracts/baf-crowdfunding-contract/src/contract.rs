@@ -4,11 +4,14 @@ use crate::{
     methods::{
         add_campaign::add_campaign,
         add_proof::add_proof,
+        contribute::contribute,
         get_campaign::get_campaign,
         get_proof::get_proof,
         initialize::initialize,
         milestone::{add_milestone, get_campaign_milestones, get_milestone},
         proof_milestone::validate_milestone_with_proof,
+        refund::refund,
+        withdraw::withdraw,
         withdraw_milestone::withdraw_milestone_funds,
     },
     storage::{
@@ -93,6 +96,20 @@ impl CrowdfundingContract {
         validate_milestone_with_proof(&env, campaign_id, milestone_sequence, proof_id)
     }
 
+    // === CONTRIBUTION & REFUND FUNCTIONS ===
+    pub fn contribute(
+        env: Env,
+        contributor: Address,
+        campaign_id: String,
+        amount: i128,
+    ) -> Result<(), Error> {
+        contribute(&env, contributor, campaign_id, amount)
+    }
+
+    pub fn refund(env: Env, contributor: Address, campaign_id: String) -> Result<(), Error> {
+        refund(&env, contributor, campaign_id)
+    }
+
     // === WITHDRAWAL FUNCTIONS ===
     pub fn withdraw_milestone_funds(
         env: Env,
@@ -102,21 +119,8 @@ impl CrowdfundingContract {
         withdraw_milestone_funds(&env, campaign_id, milestone_sequence)
     }
 
-    // === LEGACY FUNCTIONS (commented out - need refactoring for String-based IDs) ===
-    // pub fn contribute(
-    //     env: Env,
-    //     contributor: Address,
-    //     campaign_address: Address,
-    //     amount: i128,
-    // ) -> Result<(), Error> {
-    //     contribute(&env, contributor, campaign_address, amount)
-    // }
-
-    // pub fn withdraw(env: Env, creator: Address) -> Result<(), Error> {
-    //     withdraw(&env, creator)
-    // }
-
-    // pub fn refund(env: Env, contributor: Address, campaign_address: Address) -> Result<(), Error> {
-    //     refund(&env, contributor, campaign_address)
-    // }
+    // This function is for non-milestone campaigns. Use with caution.
+    pub fn withdraw(env: Env, campaign_id: String) -> Result<(), Error> {
+        withdraw(&env, campaign_id)
+    }
 }
