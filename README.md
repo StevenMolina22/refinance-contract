@@ -144,20 +144,20 @@ _Nota: devuelve `CBAH4Z5CNELXMN7PVW2SAAB6QVOID34SAQAFHJF7Q7JUNACRQEJX66MB`_
 | Función           | Descripción                                                              | Firma                                                                                  |
 | ----------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
 | `__constructor`   | Inicializa el contrato con admin y token                                 | `(admin: address, token: address) -> Result<(), Error>`                                |
-| `create_campaign` | Crea una campaña con ID único y metadatos                               | `(campaign_id: String, creator: address, title: String, description: String, goal: i128, min_donation: i128) -> Result<(), Error>` |
+| `add_campaign` | Crea una campaña con ID único y metadatos                               | `(campaign_id: String, creator: address, title: String, description: String, goal: i128, min_donation: i128) -> Result<(), Error>` |
 | `get_campaign`    | Obtiene los datos de una campaña por ID                                 | `(campaign_id: String) -> Result<Campaign, Error>`                               |
 
 #### Milestone Functions
 | Función               | Descripción                                                              | Firma                                                                                  |
 | --------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `create_milestone`    | Crea un hito para una campaña (solo creador)                           | `(campaign_id: String, target_amount: i128, description: String) -> Result<u32, Error>` |
+| `add_milestone`    | Crea un hito para una campaña (solo creador)                           | `(campaign_id: String, target_amount: i128, description: String) -> Result<u32, Error>` |
 | `get_milestone`       | Obtiene datos de un hito específico                                     | `(campaign_id: String, sequence: u32) -> Result<Milestone, Error>`                   |
 | `get_campaign_milestones` | Obtiene todos los hitos de una campaña                              | `(campaign_id: String) -> Result<Vec<Milestone>, Error>`                             |
 
 #### Proof Functions
 | Función               | Descripción                                                              | Firma                                                                                  |
 | --------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `log_proof`           | Registra una prueba para una campaña (solo admin)                       | `(proof_id: String, campaign_id: String, uri: String, description: String) -> Result<(), Error>` |
+| `add_proof`           | Registra una prueba para una campaña (solo admin)                       | `(proof_id: String, campaign_id: String, uri: String, description: String) -> Result<(), Error>` |
 | `get_proof`           | Obtiene los datos de una prueba específica                              | `(campaign_id: String, proof_id: String) -> Result<Proof, Error>`                    |
 | `validate_milestone_with_proof` | Valida un hito con prueba (solo admin)                        | `(campaign_id: String, milestone_sequence: u32, proof_id: String) -> Result<(), Error>` |
 
@@ -181,7 +181,7 @@ struct Campaign {
     min_donation: i128,
     total_raised: i128,
     supporters: u32,
-    
+
     // Milestone Management
     milestones_count: u32,       // Total milestones for this campaign
     current_milestone: u32,      // Latest completed milestone (0 = none)
@@ -259,7 +259,7 @@ enum Errors {
         --wasm target/wasm32v1-none/release/<contract_name>.optimized.wasm \
         --source admin \
         --network testnet \
-        -- create_campaign \
+        -- add_campaign \
         --creator <creator_public_key>
         --goal 100000000
 ```
@@ -295,7 +295,7 @@ enum Errors {
         --wasm target/wasm32v1-none/release/<contract_name>.optimized.wasm \
         --source admin \
         --network testnet \
-        -- log_proof \
+        -- add_proof \
         --campaign <creator_public_key> \
         --uri <proof_uri_64_bytes> \
         --desc <proof_description_128_bytes>

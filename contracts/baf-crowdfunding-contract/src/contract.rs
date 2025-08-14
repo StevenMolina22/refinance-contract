@@ -3,11 +3,11 @@ use soroban_sdk::{contract, contractimpl, Address, Env, String, Vec};
 use crate::{
     methods::{
         add_campaign::add_campaign,
+        add_proof::add_proof,
         get_campaign::get_campaign,
         get_proof::get_proof,
         initialize::initialize,
-        log_proof::log_proof,
-        milestone::{create_milestone, get_campaign_milestones, get_milestone},
+        milestone::{add_milestone, get_campaign_milestones, get_milestone},
         proof_milestone::validate_milestone_with_proof,
         withdraw_milestone::withdraw_milestone_funds,
     },
@@ -27,7 +27,7 @@ impl CrowdfundingContract {
     }
 
     // === CAMPAIGN FUNCTIONS ===
-    pub fn create_campaign(
+    pub fn add_campaign(
         env: Env,
         campaign_id: String,
         creator: Address,
@@ -52,13 +52,13 @@ impl CrowdfundingContract {
     }
 
     // === MILESTONE FUNCTIONS ===
-    pub fn create_milestone(
+    pub fn add_milestone(
         env: Env,
         campaign_id: String,
         target_amount: i128,
         description: String,
     ) -> Result<u32, Error> {
-        create_milestone(&env, campaign_id, target_amount, description)
+        add_milestone(&env, campaign_id, target_amount, description)
     }
 
     pub fn get_milestone(env: Env, campaign_id: String, sequence: u32) -> Result<Milestone, Error> {
@@ -70,14 +70,14 @@ impl CrowdfundingContract {
     }
 
     // === PROOF FUNCTIONS ===
-    pub fn log_proof(
+    pub fn add_proof(
         env: Env,
         proof_id: String,
         campaign_id: String,
         uri: String,
         description: String,
     ) -> Result<(), Error> {
-        log_proof(&env, proof_id, campaign_id, uri, description)
+        add_proof(&env, proof_id, campaign_id, uri, description)
     }
 
     pub fn get_proof(env: Env, campaign_id: String, proof_id: String) -> Result<Proof, Error> {

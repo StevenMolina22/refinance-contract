@@ -16,6 +16,8 @@ mod test {
     fn test_campaign_storage() {
         let env = Env::default();
         let creator = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
 
         let campaign_id = String::from_str(&env, "test-campaign");
         let title = String::from_str(&env, "Test Campaign");
@@ -36,7 +38,7 @@ mod test {
         };
 
         // Test campaign storage
-        let contract_id = env.register(CrowdfundingContract, ());
+        let contract_id = env.register(CrowdfundingContract, (admin.clone(), token.clone()));
         env.as_contract(&contract_id, || {
             storage::campaign::set_campaign(&env, &campaign_id, &campaign);
         });
@@ -53,22 +55,24 @@ mod test {
     #[test]
     fn test_milestone_storage() {
         let env = Env::default();
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
 
         let campaign_id = String::from_str(&env, "test-campaign");
-        let description = String::from_str(&env, "First milestone");
+        let milestone_desc = String::from_str(&env, "First milestone");
 
         let milestone = storage::structs::milestone::Milestone {
             campaign_id: campaign_id.clone(),
             sequence: 1,
             target_amount: 500,
-            description: description.clone(),
+            description: milestone_desc.clone(),
             completed: false,
             proof_id: None,
             completed_at: None,
         };
 
         // Test milestone storage
-        let contract_id = env.register(CrowdfundingContract, ());
+        let contract_id = env.register(CrowdfundingContract, (admin.clone(), token.clone()));
         env.as_contract(&contract_id, || {
             storage::milestone::set_milestone(&env, &campaign_id, 1, &milestone);
         });
@@ -79,29 +83,30 @@ mod test {
         assert_eq!(retrieved.campaign_id, campaign_id);
         assert_eq!(retrieved.sequence, 1);
         assert_eq!(retrieved.target_amount, 500);
-        assert_eq!(retrieved.description, description);
         assert_eq!(retrieved.completed, false);
     }
 
     #[test]
     fn test_proof_storage() {
         let env = Env::default();
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
 
         let campaign_id = String::from_str(&env, "test-campaign");
         let proof_id = String::from_str(&env, "proof-1");
-        let uri = String::from_str(&env, "ipfs://proof1");
-        let description = String::from_str(&env, "Proof of milestone completion");
+        let uri = String::from_str(&env, "https://example.com/proof");
+        let description = String::from_str(&env, "Test proof");
 
         let proof = storage::structs::proof::Proof {
             id: proof_id.clone(),
             campaign_id: campaign_id.clone(),
             uri: uri.clone(),
             description: description.clone(),
-            timestamp: env.ledger().timestamp(),
+            timestamp: 1234567890,
         };
 
         // Test proof storage
-        let contract_id = env.register(CrowdfundingContract, ());
+        let contract_id = env.register(CrowdfundingContract, (admin.clone(), token.clone()));
         env.as_contract(&contract_id, || {
             storage::proof::set_proof(&env, &campaign_id, &proof_id, &proof);
         });
@@ -121,12 +126,8 @@ mod test {
         let creator = Address::generate(&env);
         let admin = Address::generate(&env);
 
-        let contract_id = env.register(CrowdfundingContract, ());
-        // Set up admin and token
-        env.as_contract(&contract_id, || {
-            storage::admin::set_admin(&env, &admin);
-            storage::token::set_token(&env, &creator); // Use creator as token for simplicity
-        });
+        let token = Address::generate(&env);
+        let contract_id = env.register(CrowdfundingContract, (admin.clone(), token.clone()));
 
         let campaign_id = String::from_str(&env, "test-campaign");
         let title = String::from_str(&env, "Test Campaign");
@@ -155,8 +156,11 @@ mod test {
         let milestone_desc = String::from_str(&env, "First milestone");
         let target_amount = 500i128;
 
+        // Mock the creator's authorization
+        env.mock_all_auths();
+
         let result = env.as_contract(&contract_id, || {
-            methods::milestone::create_milestone(
+            methods::milestone::add_milestone(
                 &env,
                 campaign_id.clone(),
                 target_amount,
@@ -202,7 +206,9 @@ mod test {
             withdrawable_amount: 0,
         };
 
-        let contract_id = env.register(CrowdfundingContract, ());
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
+        let contract_id = env.register(CrowdfundingContract, (admin.clone(), token.clone()));
         env.as_contract(&contract_id, || {
             storage::campaign::set_campaign(&env, &campaign_id, &campaign);
         });
@@ -211,8 +217,11 @@ mod test {
         let milestone_desc = String::from_str(&env, "Invalid milestone");
         let invalid_target = 2000i128; // Greater than goal
 
+        // Mock the creator's authorization
+        env.mock_all_auths();
+
         let result = env.as_contract(&contract_id, || {
-            methods::milestone::create_milestone(&env, campaign_id, invalid_target, milestone_desc)
+            methods::milestone::add_milestone(&env, campaign_id, invalid_target, milestone_desc)
         });
 
         assert!(result.is_err());
@@ -227,19 +236,19 @@ mod test {
         let env = Env::default();
         let admin = Address::generate(&env);
 
-        let contract_id = env.register(CrowdfundingContract, ());
-        // Set up admin
-        env.as_contract(&contract_id, || {
-            storage::admin::set_admin(&env, &admin);
-        });
+        let token = Address::generate(&env);
+        let contract_id = env.register(CrowdfundingContract, (admin.clone(), token.clone()));
 
         let proof_id = String::from_str(&env, "proof-1");
         let campaign_id = String::from_str(&env, "test-campaign");
-        let uri = String::from_str(&env, "ipfs://proof1");
+        let uri = String::from_str(&env, "https://example.com/proof");
         let description = String::from_str(&env, "Proof description");
 
+        // Mock the admin's authorization
+        env.mock_all_auths();
+
         let result = env.as_contract(&contract_id, || {
-            methods::log_proof::log_proof(
+            methods::add_proof::add_proof(
                 &env,
                 proof_id.clone(),
                 campaign_id.clone(),

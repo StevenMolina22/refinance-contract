@@ -4,7 +4,7 @@ use crate::{
 };
 use soroban_sdk::{Env, String};
 
-pub fn log_proof(
+pub fn add_proof(
     env: &Env,
     proof_id: String,
     campaign_id: String,

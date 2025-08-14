@@ -3,8 +3,8 @@ use crate::storage::types::error::Error;
 use crate::storage::{self, structs::milestone::*};
 use soroban_sdk::{Env, String, Vec};
 
-/// Create a new milestone for a campaign (Creator only)
-pub fn create_milestone(
+/// Add a new milestone for a campaign (Creator only)
+pub fn add_milestone(
     env: &Env,
     campaign_id: String,
     target_amount: i128,

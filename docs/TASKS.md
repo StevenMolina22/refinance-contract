@@ -6,6 +6,17 @@
 
 ## Completed Tasks
 
+### Refactor Method Names to Use Consistent add/get Pattern - 2025-01-20 ✅
+Update all method names to use consistent "add" and "get" prefixes instead of "create" and "log":
+- [x] Rename `create_milestone` to `add_milestone` in milestone.rs
+- [x] Rename `log_proof` to `add_proof` in log_proof.rs and rename file to add_proof.rs
+- [x] Update contract.rs to use new method names
+- [x] Update method imports in contract.rs
+- [x] Update mod.rs to reference renamed files
+- [x] Update any internal function calls to use new names
+- [x] Update documentation and README.md with new method names
+- [x] Test that contract compiles and functions work correctly
+
 ### Integrate Milestone Logic in Crowdfunding Contracts - 2025-01-20 ✅
 Implement milestone-based crowdfunding system with String-based identifiers including:
 - [x] Update error types to include milestone-related errors
