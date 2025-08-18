@@ -5,6 +5,7 @@ use soroban_sdk::{contracttype, Address, String};
 pub enum DataKey {
     Admin,
     Token,
+    NftContract,                   // Address of the NFT contract
     Campaign(String),              // String-based campaign ID
     Contribution(String, Address), // (campaign_id, contributor)
     Proof(String, String),         // (campaign_id, proof_id)

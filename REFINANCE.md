@@ -35,7 +35,7 @@ The content is organized as follows:
 # Directory Structure
 ```
 contracts/
-  baf-crowdfunding-contract/
+  crowdfunding-contract/
     src/
       events/
         campaign.rs
@@ -47,11 +47,11 @@ contracts/
         refund.rs
       methods/
         add_campaign.rs
+        add_proof.rs
         contribute.rs
         get_campaign.rs
         get_proof.rs
         initialize.rs
-        log_proof.rs
         milestone.rs
         mod.rs
         proof_milestone.rs
@@ -80,21 +80,11 @@ contracts/
       contract.rs
       lib.rs
       TIPS.md
-    test_snapshots/
-      test/
-        test_campaign_storage.1.json
-        test_milestone_creation_logic.1.json
-        test_milestone_storage.1.json
-        test_milestone_system.1.json
-        test_milestone_validation_errors.1.json
-        test_proof_and_milestone_validation.1.json
-        test_proof_logging.1.json
-        test_proof_storage.1.json
     tests/
       attestation_test.rs
     Cargo.toml
     Makefile
-  milestone-nft-contract/
+  nft-contract/
     src/
       integration/
         mod.rs
@@ -110,7 +100,7 @@ README.md
 
 # Files
 
-## File: contracts/baf-crowdfunding-contract/src/events/campaign.rs
+## File: contracts/crowdfunding-contract/src/events/campaign.rs
 ````rust
 use soroban_sdk::{Address, Env, Symbol};
 
@@ -125,7 +115,7 @@ pub (crate) fn withdraw(env: &Env, creator: &Address, total_raised: i128) {
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/events/contract.rs
+## File: contracts/crowdfunding-contract/src/events/contract.rs
 ````rust
 use soroban_sdk::{Address, Env, Symbol};
 
@@ -135,19 +125,23 @@ pub(crate) fn contract_initialized(env: &Env, admin: &Address, token: &Address) 
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/events/contribute.rs
+## File: contracts/crowdfunding-contract/src/events/contribute.rs
 ````rust
-use soroban_sdk::{Address, Env, Symbol};
+use soroban_sdk::{Address, Env, String, Symbol};
 
-
-pub(crate) fn add_contribute(env: &Env, contributor: &Address, campaign_address: &Address, amount: &i128) {
+pub(crate) fn add_contribute(
+    env: &Env,
+    contributor: &Address,
+    campaign_id: &String,
+    amount: &i128,
+) {
     let topics = (Symbol::new(env, "add_contribute"), contributor);
-    let data = (campaign_address, amount);
+    let data = (campaign_id.clone(), amount);
     env.events().publish(topics, data);
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/events/milestone.rs
+## File: contracts/crowdfunding-contract/src/events/milestone.rs
 ````rust
 use soroban_sdk::{symbol_short, Env, String};
 
@@ -191,41 +185,176 @@ pub(crate) fn milestone_withdrawal(
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/events/refund.rs
+## File: contracts/crowdfunding-contract/src/events/mod.rs
 ````rust
-use soroban_sdk::{Address, Env, Symbol};
+pub mod campaign;
+pub mod contract;
+pub mod contribute;
+pub mod milestone;
+pub mod proof;
+pub mod refund;
+````
 
+## File: contracts/crowdfunding-contract/src/events/proof.rs
+````rust
+use soroban_sdk::{symbol_short, Env, String};
 
-pub(crate) fn refund(env: &Env, contributor: &Address, campaign_address: &Address, amount: &i128) {
+/// Event emitted when a proof is logged for a campaign
+pub(crate) fn proof_logged(env: &Env, campaign_id: &String, proof_id: &String) {
+    env.events().publish(
+        (symbol_short!("proof"), symbol_short!("logged")),
+        (campaign_id.clone(), proof_id.clone()),
+    );
+}
+
+/// Event emitted when a proof is validated
+pub(crate) fn proof_validated(env: &Env, campaign_id: &String, proof_id: &String) {
+    env.events().publish(
+        (symbol_short!("proof"), symbol_short!("validated")),
+        (campaign_id.clone(), proof_id.clone()),
+    );
+}
+````
+
+## File: contracts/crowdfunding-contract/src/events/refund.rs
+````rust
+use soroban_sdk::{Address, Env, String, Symbol};
+
+pub(crate) fn refund(env: &Env, contributor: &Address, campaign_id: &String, amount: &i128) {
     let topics = (Symbol::new(env, "refund"), contributor);
-    let data = (campaign_address, amount);
+    let data = (campaign_id.clone(), amount);
     env.events().publish(topics, data);
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/methods/contribute.rs
+## File: contracts/crowdfunding-contract/src/methods/add_campaign.rs
 ````rust
-use soroban_sdk::{Address, Env};
+use soroban_sdk::{Address, Env, String};
+
+use crate::{
+    events,
+    storage::{
+        campaign::{has_campaign, set_campaign},
+        structs::campaign::Campaign,
+        types::error::Error,
+    },
+};
+
+pub fn add_campaign(
+    env: &Env,
+    campaign_id: String,
+    creator: Address,
+    title: String,
+    description: String,
+    goal: i128,
+    min_donation: i128,
+) -> Result<(), Error> {
+    // Verify creator authorization
+    creator.require_auth();
+
+    // Validate inputs
+    if goal <= 0 {
+        return Err(Error::InvalidGoalAmount);
+    }
+
+    if min_donation <= 0 || min_donation > goal {
+        return Err(Error::InvalidMinDonation);
+    }
+
+    // Check if campaign already exists
+    if has_campaign(env, &campaign_id) {
+        return Err(Error::CampaignAlreadyExists);
+    }
+
+    // Create campaign
+    let campaign = Campaign {
+        id: campaign_id.clone(),
+        creator: creator.clone(),
+        title,
+        description,
+        goal,
+        min_donation,
+        total_raised: 0,
+        supporters: 0,
+        milestones_count: 0,
+        current_milestone: 0,
+        withdrawable_amount: 0,
+    };
+
+    // Store campaign
+    set_campaign(env, &campaign_id, &campaign);
+
+    // Emit event
+    events::campaign::add_campaign(env, &creator, &goal);
+
+    Ok(())
+}
+````
+
+## File: contracts/crowdfunding-contract/src/methods/add_proof.rs
+````rust
+use crate::{
+    events,
+    storage::{admin::get_admin, proof::set_proof, structs::proof::Proof, types::error::Error},
+};
+use soroban_sdk::{Env, String};
+
+pub fn add_proof(
+    env: &Env,
+    proof_id: String,
+    campaign_id: String,
+    uri: String,
+    description: String,
+) -> Result<(), Error> {
+    let admin = get_admin(env);
+    admin.require_auth();
+
+    let proof = Proof {
+        id: proof_id.clone(),
+        campaign_id: campaign_id.clone(),
+        uri,
+        description,
+        timestamp: env.ledger().timestamp(),
+    };
+
+    set_proof(env, &campaign_id, &proof_id, &proof);
+
+    events::proof::proof_logged(env, &campaign_id, &proof_id);
+
+    Ok(())
+}
+````
+
+## File: contracts/crowdfunding-contract/src/methods/contribute.rs
+````rust
 use crate::{
     events,
     methods::token::token_transfer,
     storage::{
-        campaign::{get_campaign, has_campaign, set_campaign}, contribution::set_contribution, types::error::Error
-    }
+        campaign::{get_campaign, has_campaign, set_campaign},
+        contribution::set_contribution,
+        types::error::Error,
+    },
 };
+use soroban_sdk::{Address, Env, String};
 
-pub fn contribute(env: &Env, contributor: Address, campaign_address: Address, amount: i128) -> Result<(), Error> {
+pub fn contribute(
+    env: &Env,
+    contributor: Address,
+    campaign_id: String,
+    amount: i128,
+) -> Result<(), Error> {
     contributor.require_auth();
 
-    if amount < 0 {
+    if amount <= 0 {
         return Err(Error::AmountMustBePositive);
     }
 
-    if !has_campaign(env, &campaign_address) {
+    if !has_campaign(env, &campaign_id) {
         return Err(Error::CampaignNotFound);
     }
 
-    let mut campaign = get_campaign(env, &campaign_address)?;
+    let mut campaign = get_campaign(env, &campaign_id)?;
 
     if campaign.min_donation > amount {
         return Err(Error::ContributionBelowMinimum);
@@ -235,20 +364,44 @@ pub fn contribute(env: &Env, contributor: Address, campaign_address: Address, am
         return Err(Error::CampaignGoalExceeded);
     }
 
-    token_transfer(&env, &contributor, &env.current_contract_address(), &amount)?;
+    token_transfer(env, &contributor, &env.current_contract_address(), &amount)?;
 
     campaign.total_raised += amount;
     campaign.supporters += 1;
-    
-    set_campaign(env, &campaign_address, &campaign);
-    set_contribution(env, &campaign_address, &contributor, amount);
-    events::contribute::add_contribute(&env, &contributor, &campaign_address, &amount);
+
+    set_campaign(env, &campaign_id, &campaign);
+    set_contribution(env, &campaign_id, &contributor, amount);
+    events::contribute::add_contribute(env, &contributor, &campaign_id, &amount);
 
     Ok(())
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/methods/initialize.rs
+## File: contracts/crowdfunding-contract/src/methods/get_campaign.rs
+````rust
+use soroban_sdk::{Env, String};
+
+use crate::storage::{
+    campaign::get_campaign as read_campaign, structs::campaign::Campaign, types::error::Error,
+};
+
+pub fn get_campaign(env: &Env, campaign_id: &String) -> Result<Campaign, Error> {
+    let campaign = read_campaign(env, campaign_id)?;
+    Ok(campaign)
+}
+````
+
+## File: contracts/crowdfunding-contract/src/methods/get_proof.rs
+````rust
+use crate::storage::{proof::get_proof as read_proof, structs::proof::Proof, types::error::Error};
+use soroban_sdk::{Env, String};
+
+pub fn get_proof(env: &Env, campaign_id: &String, proof_id: &String) -> Result<Proof, Error> {
+    read_proof(env, campaign_id, proof_id)
+}
+````
+
+## File: contracts/crowdfunding-contract/src/methods/initialize.rs
 ````rust
 use soroban_sdk::{Address, Env};
 
@@ -274,15 +427,15 @@ pub fn initialize(env: &Env, admin: Address, token: Address) -> Result<(), Error
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/methods/milestone.rs
+## File: contracts/crowdfunding-contract/src/methods/milestone.rs
 ````rust
 use crate::events;
 use crate::storage::types::error::Error;
 use crate::storage::{self, structs::milestone::*};
 use soroban_sdk::{Env, String, Vec};
 
-/// Create a new milestone for a campaign (Creator only)
-pub fn create_milestone(
+/// Add a new milestone for a campaign (Creator only)
+pub fn add_milestone(
     env: &Env,
     campaign_id: String,
     target_amount: i128,
@@ -355,7 +508,23 @@ pub fn get_campaign_milestones(env: &Env, campaign_id: &String) -> Result<Vec<Mi
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/methods/proof_milestone.rs
+## File: contracts/crowdfunding-contract/src/methods/mod.rs
+````rust
+pub mod add_campaign;
+pub mod add_proof;
+pub mod contribute;
+pub mod get_campaign;
+pub mod get_proof;
+pub mod initialize;
+pub mod milestone;
+pub mod proof_milestone;
+pub mod refund;
+pub mod token;
+pub mod withdraw;
+pub mod withdraw_milestone;
+````
+
+## File: contracts/crowdfunding-contract/src/methods/proof_milestone.rs
 ````rust
 use crate::events;
 use crate::storage;
@@ -415,43 +584,43 @@ pub fn validate_milestone_with_proof(
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/methods/refund.rs
+## File: contracts/crowdfunding-contract/src/methods/refund.rs
 ````rust
-use soroban_sdk::{Address, Env};
-
 use crate::{
     events,
-    methods::token::token_transfer, storage::{
-        campaign::{get_campaign, set_campaign}, contribution::{
-            get_contribution, has_contribution, remove_contribution
-        }, types::error::Error
-    }
+    methods::token::token_transfer,
+    storage::{
+        campaign::{get_campaign, set_campaign},
+        contribution::{get_contribution, has_contribution, remove_contribution},
+        types::error::Error,
+    },
 };
+use soroban_sdk::{Address, Env, String};
 
-pub fn refund(env: &Env, contributor: Address, campaign_address: Address) -> Result<(), Error> {
+pub fn refund(env: &Env, contributor: Address, campaign_id: String) -> Result<(), Error> {
     contributor.require_auth();
 
-    let mut campaign = get_campaign(env, &campaign_address)?;
-
-    if !has_contribution(env, &campaign_address, &contributor) {
+    if !has_contribution(env, &campaign_id, &contributor) {
         return Err(Error::ContributionNotFound);
     }
 
-    let amount = get_contribution(env, &campaign_address, &contributor);
-    token_transfer(&env, &env.current_contract_address(), &contributor, &amount)?;
+    let mut campaign = get_campaign(env, &campaign_id)?;
+    let amount = get_contribution(env, &campaign_id, &contributor);
+
+    token_transfer(env, &env.current_contract_address(), &contributor, &amount)?;
 
     campaign.total_raised -= amount;
     campaign.supporters -= 1;
 
-    remove_contribution(env, &campaign_address, &contributor);
-    set_campaign(env, &campaign_address, &campaign);
-    events::refund::refund(&env, &contributor, &campaign_address, &amount);
+    remove_contribution(env, &campaign_id, &contributor);
+    set_campaign(env, &campaign_id, &campaign);
+    events::refund::refund(env, &contributor, &campaign_id, &amount);
 
     Ok(())
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/methods/token.rs
+## File: contracts/crowdfunding-contract/src/methods/token.rs
 ````rust
 use soroban_sdk::{
     token::{self},
@@ -468,7 +637,7 @@ pub fn token_transfer(env: &Env, from: &Address, to: &Address, amount: &i128) ->
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/methods/withdraw_milestone.rs
+## File: contracts/crowdfunding-contract/src/methods/withdraw_milestone.rs
 ````rust
 use crate::events;
 use crate::methods::token::token_transfer;
@@ -528,43 +697,68 @@ pub fn withdraw_milestone_funds(
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/methods/withdraw.rs
+## File: contracts/crowdfunding-contract/src/methods/withdraw.rs
 ````rust
-use soroban_sdk::{Address, Env};
-
 use crate::{
     events,
     methods::token::token_transfer,
     storage::{
         campaign::{get_campaign, remove_campaign},
-        types::error::Error
-    }
+        types::error::Error,
+    },
 };
+use soroban_sdk::{Env, String};
 
-pub fn withdraw(env: &Env, creator: Address) -> Result<(), Error> {
-    creator.require_auth();
+pub fn withdraw(env: &Env, campaign_id: String) -> Result<(), Error> {
+    let campaign = get_campaign(env, &campaign_id)?;
 
-    let campaign = get_campaign(env, &creator)?;
+    // Authorize the campaign creator
+    campaign.creator.require_auth();
 
-    if campaign.total_raised != campaign.goal {
+    // This logic is for a non-milestone, all-or-nothing campaign.
+    if campaign.total_raised < campaign.goal {
         return Err(Error::CampaignGoalNotReached);
     }
 
     token_transfer(
-        &env,
+        env,
         &env.current_contract_address(),
-        &creator,
-        &campaign.total_raised
+        &campaign.creator,
+        &campaign.total_raised,
     )?;
 
-    remove_campaign(env, &creator);
-    events::campaign::withdraw(&env, &creator, campaign.total_raised);
-    
+    // The campaign is now complete and can be removed.
+    remove_campaign(env, &campaign_id);
+    events::campaign::withdraw(env, &campaign.creator, campaign.total_raised);
+
     Ok(())
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/storage/structs/contribution.rs
+## File: contracts/crowdfunding-contract/src/storage/structs/campaign.rs
+````rust
+use soroban_sdk::{contracttype, Address, String};
+
+#[derive(Clone)]
+#[contracttype]
+pub struct Campaign {
+    pub id: String, // Campaign identifier
+    pub creator: Address,
+    pub title: String,       // Campaign title
+    pub description: String, // Campaign description
+    pub goal: i128,
+    pub min_donation: i128,
+    pub total_raised: i128,
+    pub supporters: u32,
+
+    // Milestone Management
+    pub milestones_count: u32,     // Total milestones for this campaign
+    pub current_milestone: u32,    // Latest completed milestone (0 = none)
+    pub withdrawable_amount: i128, // Amount available for withdrawal
+}
+````
+
+## File: contracts/crowdfunding-contract/src/storage/structs/contribution.rs
 ````rust
 use soroban_sdk::contracttype;
 
@@ -576,7 +770,7 @@ pub struct Contribution {
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/storage/structs/milestone.rs
+## File: contracts/crowdfunding-contract/src/storage/structs/milestone.rs
 ````rust
 use soroban_sdk::{contracttype, String};
 
@@ -600,13 +794,183 @@ pub struct MilestoneKey {
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/storage/types/mod.rs
+## File: contracts/crowdfunding-contract/src/storage/structs/mod.rs
+````rust
+pub mod campaign;
+pub mod contribution;
+pub mod milestone;
+pub mod proof;
+````
+
+## File: contracts/crowdfunding-contract/src/storage/structs/proof.rs
+````rust
+use soroban_sdk::{contracttype, String};
+
+#[derive(Clone)]
+#[contracttype]
+pub struct Proof {
+    pub id: String,          // Proof identifier
+    pub campaign_id: String, // Which campaign this proof belongs to
+    pub uri: String,         // IPFS or external URI
+    pub description: String, // Description of the proof
+    pub timestamp: u64,      // When proof was submitted
+}
+````
+
+## File: contracts/crowdfunding-contract/src/storage/types/error.rs
+````rust
+use soroban_sdk::contracterror;
+
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum Error {
+    ContractInitialized = 0,
+    ContractNotInitialized = 1,
+    MathOverflow = 2,
+    MathUnderflow = 3,
+    CampaignNotFound = 4,
+    CampaignGoalExceeded = 5,
+    ContributionBelowMinimum = 6,
+    AmountMustBePositive = 7,
+    CampaignGoalNotReached = 8,
+    ContributionNotFound = 9,
+    CampaignAlreadyExists = 10,
+    ProofNotFound = 11,
+    InvalidGoalAmount = 12,
+    InvalidMinDonation = 13,
+    InvalidMilestoneAmount = 14,
+    MilestoneAmountNotIncreasing = 15,
+    MilestoneNotFound = 16,
+    MilestoneAlreadyCompleted = 17,
+    InsufficientFundsForMilestone = 18,
+    MilestoneNotInSequence = 19,
+    MilestoneNotCompleted = 20,
+    CannotWithdrawFutureMilestone = 21,
+    NoFundsToWithdraw = 22,
+}
+````
+
+## File: contracts/crowdfunding-contract/src/storage/types/mod.rs
 ````rust
 pub mod error;
 pub mod storage;
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/storage/milestone.rs
+## File: contracts/crowdfunding-contract/src/storage/types/storage.rs
+````rust
+use soroban_sdk::{contracttype, Address, String};
+
+#[derive(Clone)]
+#[contracttype]
+pub enum DataKey {
+    Admin,
+    Token,
+    Campaign(String),              // String-based campaign ID
+    Contribution(String, Address), // (campaign_id, contributor)
+    Proof(String, String),         // (campaign_id, proof_id)
+    Milestone(String, u32),        // (campaign_id, sequence)
+}
+````
+
+## File: contracts/crowdfunding-contract/src/storage/admin.rs
+````rust
+use soroban_sdk::{Address, Env};
+
+use super::types::storage::DataKey;
+
+pub fn has_admin(env: &Env) -> bool {
+    let key = DataKey::Admin;
+
+    env.storage().instance().has(&key)
+}
+
+pub fn set_admin(env: &Env, admin: &Address) {
+    let key = DataKey::Admin;
+
+    env.storage().instance().set(&key, admin);
+}
+
+pub fn get_admin(env: &Env) -> Address {
+    let key = DataKey::Admin;
+
+    env.storage().instance().get(&key).unwrap()
+}
+````
+
+## File: contracts/crowdfunding-contract/src/storage/campaign.rs
+````rust
+use crate::storage::{
+    structs::campaign::Campaign,
+    types::{error::Error, storage::DataKey},
+};
+use soroban_sdk::{Env, String};
+
+pub(crate) fn campaign_key(campaign_id: &String) -> DataKey {
+    DataKey::Campaign(campaign_id.clone())
+}
+
+pub(crate) fn has_campaign(env: &Env, campaign_id: &String) -> bool {
+    let key = campaign_key(campaign_id);
+    env.storage().persistent().has(&key)
+}
+
+pub(crate) fn set_campaign(env: &Env, campaign_id: &String, campaign: &Campaign) {
+    let key = campaign_key(campaign_id);
+    env.storage().persistent().set(&key, campaign);
+}
+
+pub(crate) fn get_campaign(env: &Env, campaign_id: &String) -> Result<Campaign, Error> {
+    let key = campaign_key(campaign_id);
+    env.storage()
+        .persistent()
+        .get(&key)
+        .ok_or(Error::CampaignNotFound)
+}
+
+pub(crate) fn remove_campaign(env: &Env, campaign_id: &String) {
+    let key = campaign_key(campaign_id);
+    env.storage().persistent().remove(&key);
+}
+````
+
+## File: contracts/crowdfunding-contract/src/storage/contribution.rs
+````rust
+use soroban_sdk::{Address, Env, String};
+
+use super::types::storage::DataKey;
+
+pub(crate) fn has_contribution(env: &Env, campaign_id: &String, contributor: &Address) -> bool {
+    let key = DataKey::Contribution(campaign_id.clone(), contributor.clone());
+
+    env.storage().persistent().has(&key)
+}
+
+pub(crate) fn set_contribution(
+    env: &Env,
+    campaign_id: &String,
+    contributor: &Address,
+    amount: i128,
+) {
+    let key = DataKey::Contribution(campaign_id.clone(), contributor.clone());
+
+    env.storage().persistent().set(&key, &amount);
+}
+
+pub(crate) fn get_contribution(env: &Env, campaign_id: &String, contributor: &Address) -> i128 {
+    let key = DataKey::Contribution(campaign_id.clone(), contributor.clone());
+
+    env.storage().persistent().get(&key).unwrap_or(0)
+}
+
+pub(crate) fn remove_contribution(env: &Env, campaign_id: &String, contributor: &Address) {
+    let key = DataKey::Contribution(campaign_id.clone(), contributor.clone());
+
+    env.storage().persistent().remove(&key);
+}
+````
+
+## File: contracts/crowdfunding-contract/src/storage/milestone.rs
 ````rust
 use crate::storage::{
     structs::milestone::Milestone,
@@ -646,7 +1010,19 @@ pub(crate) fn remove_milestone(env: &Env, campaign_id: &String, sequence: u32) {
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/storage/proof.rs
+## File: contracts/crowdfunding-contract/src/storage/mod.rs
+````rust
+pub mod admin;
+pub mod campaign;
+pub mod contribution;
+pub mod milestone;
+pub mod proof;
+pub mod structs;
+pub mod token;
+pub mod types;
+````
+
+## File: contracts/crowdfunding-contract/src/storage/proof.rs
 ````rust
 use crate::storage::{
     structs::proof::Proof,
@@ -686,7 +1062,431 @@ pub(crate) fn remove_proof(env: &Env, campaign_id: &String, proof_id: &String) {
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/TIPS.md
+## File: contracts/crowdfunding-contract/src/storage/token.rs
+````rust
+use soroban_sdk::{Address, Env};
+
+use super::types::storage::DataKey;
+
+pub fn set_token(env: &Env, token: &Address) {
+    let key = DataKey::Token;
+
+    env.storage().instance().set(&key, token);
+}
+
+pub fn get_token(env: &Env) -> Address {
+    let key = DataKey::Token;
+
+    env.storage().instance().get(&key).unwrap()
+}
+````
+
+## File: contracts/crowdfunding-contract/src/contract.rs
+````rust
+use soroban_sdk::{contract, contractimpl, Address, Env, String, Vec};
+
+use crate::{
+    methods::{
+        add_campaign::add_campaign,
+        add_proof::add_proof,
+        contribute::contribute,
+        get_campaign::get_campaign,
+        get_proof::get_proof,
+        initialize::initialize,
+        milestone::{add_milestone, get_campaign_milestones, get_milestone},
+        proof_milestone::validate_milestone_with_proof,
+        refund::refund,
+        withdraw::withdraw,
+        withdraw_milestone::withdraw_milestone_funds,
+    },
+    storage::{
+        structs::{campaign::Campaign, milestone::Milestone, proof::Proof},
+        types::error::Error,
+    },
+};
+
+#[contract]
+pub struct CrowdfundingContract;
+
+#[contractimpl]
+impl CrowdfundingContract {
+    pub fn __constructor(env: Env, admin: Address, token: Address) -> Result<(), Error> {
+        initialize(&env, admin, token)
+    }
+
+    // === CAMPAIGN FUNCTIONS ===
+    pub fn add_campaign(
+        env: Env,
+        campaign_id: String,
+        creator: Address,
+        title: String,
+        description: String,
+        goal: i128,
+        min_donation: i128,
+    ) -> Result<(), Error> {
+        add_campaign(
+            &env,
+            campaign_id,
+            creator,
+            title,
+            description,
+            goal,
+            min_donation,
+        )
+    }
+
+    pub fn get_campaign(env: Env, campaign_id: String) -> Result<Campaign, Error> {
+        get_campaign(&env, &campaign_id)
+    }
+
+    // === MILESTONE FUNCTIONS ===
+    pub fn add_milestone(
+        env: Env,
+        campaign_id: String,
+        target_amount: i128,
+        description: String,
+    ) -> Result<u32, Error> {
+        add_milestone(&env, campaign_id, target_amount, description)
+    }
+
+    pub fn get_milestone(env: Env, campaign_id: String, sequence: u32) -> Result<Milestone, Error> {
+        get_milestone(&env, &campaign_id, sequence)
+    }
+
+    pub fn get_campaign_milestones(env: Env, campaign_id: String) -> Result<Vec<Milestone>, Error> {
+        get_campaign_milestones(&env, &campaign_id)
+    }
+
+    // === PROOF FUNCTIONS ===
+    pub fn add_proof(
+        env: Env,
+        proof_id: String,
+        campaign_id: String,
+        uri: String,
+        description: String,
+    ) -> Result<(), Error> {
+        add_proof(&env, proof_id, campaign_id, uri, description)
+    }
+
+    pub fn get_proof(env: Env, campaign_id: String, proof_id: String) -> Result<Proof, Error> {
+        get_proof(&env, &campaign_id, &proof_id)
+    }
+
+    pub fn validate_milestone_with_proof(
+        env: Env,
+        campaign_id: String,
+        milestone_sequence: u32,
+        proof_id: String,
+    ) -> Result<(), Error> {
+        validate_milestone_with_proof(&env, campaign_id, milestone_sequence, proof_id)
+    }
+
+    // === CONTRIBUTION & REFUND FUNCTIONS ===
+    pub fn contribute(
+        env: Env,
+        contributor: Address,
+        campaign_id: String,
+        amount: i128,
+    ) -> Result<(), Error> {
+        contribute(&env, contributor, campaign_id, amount)
+    }
+
+    pub fn refund(env: Env, contributor: Address, campaign_id: String) -> Result<(), Error> {
+        refund(&env, contributor, campaign_id)
+    }
+
+    // === WITHDRAWAL FUNCTIONS ===
+    pub fn withdraw_milestone_funds(
+        env: Env,
+        campaign_id: String,
+        milestone_sequence: u32,
+    ) -> Result<i128, Error> {
+        withdraw_milestone_funds(&env, campaign_id, milestone_sequence)
+    }
+
+    // This function is for non-milestone campaigns. Use with caution.
+    pub fn withdraw(env: Env, campaign_id: String) -> Result<(), Error> {
+        withdraw(&env, campaign_id)
+    }
+}
+````
+
+## File: contracts/crowdfunding-contract/src/lib.rs
+````rust
+#![no_std]
+
+mod contract;
+mod events;
+mod methods;
+pub mod storage;
+
+pub use contract::{CrowdfundingContract, CrowdfundingContractClient};
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use soroban_sdk::{testutils::Address as _, Address, Env, String};
+
+    #[test]
+    fn test_campaign_storage() {
+        let env = Env::default();
+        let creator = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
+
+        let campaign_id = String::from_str(&env, "test-campaign");
+        let title = String::from_str(&env, "Test Campaign");
+        let description = String::from_str(&env, "A test crowdfunding campaign");
+
+        let campaign = storage::structs::campaign::Campaign {
+            id: campaign_id.clone(),
+            creator: creator.clone(),
+            title: title.clone(),
+            description: description.clone(),
+            goal: 1000,
+            min_donation: 10,
+            total_raised: 0,
+            supporters: 0,
+            milestones_count: 0,
+            current_milestone: 0,
+            withdrawable_amount: 0,
+        };
+
+        // Test campaign storage
+        let contract_id = env.register(CrowdfundingContract, (admin.clone(), token.clone()));
+        env.as_contract(&contract_id, || {
+            storage::campaign::set_campaign(&env, &campaign_id, &campaign);
+        });
+        let retrieved = env.as_contract(&contract_id, || {
+            storage::campaign::get_campaign(&env, &campaign_id).unwrap()
+        });
+
+        assert_eq!(retrieved.id, campaign_id);
+        assert_eq!(retrieved.title, title);
+        assert_eq!(retrieved.goal, 1000);
+        assert_eq!(retrieved.milestones_count, 0);
+    }
+
+    #[test]
+    fn test_milestone_storage() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
+
+        let campaign_id = String::from_str(&env, "test-campaign");
+        let milestone_desc = String::from_str(&env, "First milestone");
+
+        let milestone = storage::structs::milestone::Milestone {
+            campaign_id: campaign_id.clone(),
+            sequence: 1,
+            target_amount: 500,
+            description: milestone_desc.clone(),
+            completed: false,
+            proof_id: None,
+            completed_at: None,
+        };
+
+        // Test milestone storage
+        let contract_id = env.register(CrowdfundingContract, (admin.clone(), token.clone()));
+        env.as_contract(&contract_id, || {
+            storage::milestone::set_milestone(&env, &campaign_id, 1, &milestone);
+        });
+        let retrieved = env.as_contract(&contract_id, || {
+            storage::milestone::get_milestone(&env, &campaign_id, 1).unwrap()
+        });
+
+        assert_eq!(retrieved.campaign_id, campaign_id);
+        assert_eq!(retrieved.sequence, 1);
+        assert_eq!(retrieved.target_amount, 500);
+        assert_eq!(retrieved.completed, false);
+    }
+
+    #[test]
+    fn test_proof_storage() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
+
+        let campaign_id = String::from_str(&env, "test-campaign");
+        let proof_id = String::from_str(&env, "proof-1");
+        let uri = String::from_str(&env, "https://example.com/proof");
+        let description = String::from_str(&env, "Test proof");
+
+        let proof = storage::structs::proof::Proof {
+            id: proof_id.clone(),
+            campaign_id: campaign_id.clone(),
+            uri: uri.clone(),
+            description: description.clone(),
+            timestamp: 1234567890,
+        };
+
+        // Test proof storage
+        let contract_id = env.register(CrowdfundingContract, (admin.clone(), token.clone()));
+        env.as_contract(&contract_id, || {
+            storage::proof::set_proof(&env, &campaign_id, &proof_id, &proof);
+        });
+        let retrieved = env.as_contract(&contract_id, || {
+            storage::proof::get_proof(&env, &campaign_id, &proof_id).unwrap()
+        });
+
+        assert_eq!(retrieved.id, proof_id);
+        assert_eq!(retrieved.campaign_id, campaign_id);
+        assert_eq!(retrieved.uri, uri);
+        assert_eq!(retrieved.description, description);
+    }
+
+    #[test]
+    fn test_milestone_creation_logic() {
+        let env = Env::default();
+        let creator = Address::generate(&env);
+        let admin = Address::generate(&env);
+
+        let token = Address::generate(&env);
+        let contract_id = env.register(CrowdfundingContract, (admin.clone(), token.clone()));
+
+        let campaign_id = String::from_str(&env, "test-campaign");
+        let title = String::from_str(&env, "Test Campaign");
+        let description = String::from_str(&env, "A test campaign");
+
+        // Create and store campaign
+        let campaign = storage::structs::campaign::Campaign {
+            id: campaign_id.clone(),
+            creator: creator.clone(),
+            title,
+            description,
+            goal: 1000,
+            min_donation: 10,
+            total_raised: 0,
+            supporters: 0,
+            milestones_count: 0,
+            current_milestone: 0,
+            withdrawable_amount: 0,
+        };
+
+        env.as_contract(&contract_id, || {
+            storage::campaign::set_campaign(&env, &campaign_id, &campaign);
+        });
+
+        // Test milestone creation method
+        let milestone_desc = String::from_str(&env, "First milestone");
+        let target_amount = 500i128;
+
+        // Mock the creator's authorization
+        env.mock_all_auths();
+
+        let result = env.as_contract(&contract_id, || {
+            methods::milestone::add_milestone(
+                &env,
+                campaign_id.clone(),
+                target_amount,
+                milestone_desc,
+            )
+        });
+
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+
+        // Verify milestone was created
+        let (milestone, updated_campaign) = env.as_contract(&contract_id, || {
+            let milestone = storage::milestone::get_milestone(&env, &campaign_id, 1).unwrap();
+            let updated_campaign = storage::campaign::get_campaign(&env, &campaign_id).unwrap();
+            (milestone, updated_campaign)
+        });
+        assert_eq!(milestone.sequence, 1);
+        assert_eq!(milestone.target_amount, target_amount);
+        assert_eq!(updated_campaign.milestones_count, 1);
+    }
+
+    #[test]
+    fn test_milestone_validation_errors() {
+        let env = Env::default();
+        let creator = Address::generate(&env);
+
+        let campaign_id = String::from_str(&env, "test-campaign");
+        let title = String::from_str(&env, "Test Campaign");
+        let description = String::from_str(&env, "A test campaign");
+
+        // Create campaign with goal of 1000
+        let campaign = storage::structs::campaign::Campaign {
+            id: campaign_id.clone(),
+            creator: creator.clone(),
+            title,
+            description,
+            goal: 1000,
+            min_donation: 10,
+            total_raised: 0,
+            supporters: 0,
+            milestones_count: 0,
+            current_milestone: 0,
+            withdrawable_amount: 0,
+        };
+
+        let admin = Address::generate(&env);
+        let token = Address::generate(&env);
+        let contract_id = env.register(CrowdfundingContract, (admin.clone(), token.clone()));
+        env.as_contract(&contract_id, || {
+            storage::campaign::set_campaign(&env, &campaign_id, &campaign);
+        });
+
+        // Test invalid milestone amount (greater than goal)
+        let milestone_desc = String::from_str(&env, "Invalid milestone");
+        let invalid_target = 2000i128; // Greater than goal
+
+        // Mock the creator's authorization
+        env.mock_all_auths();
+
+        let result = env.as_contract(&contract_id, || {
+            methods::milestone::add_milestone(&env, campaign_id, invalid_target, milestone_desc)
+        });
+
+        assert!(result.is_err());
+        assert_eq!(
+            result.unwrap_err(),
+            storage::types::error::Error::InvalidMilestoneAmount
+        );
+    }
+
+    #[test]
+    fn test_proof_logging() {
+        let env = Env::default();
+        let admin = Address::generate(&env);
+
+        let token = Address::generate(&env);
+        let contract_id = env.register(CrowdfundingContract, (admin.clone(), token.clone()));
+
+        let proof_id = String::from_str(&env, "proof-1");
+        let campaign_id = String::from_str(&env, "test-campaign");
+        let uri = String::from_str(&env, "https://example.com/proof");
+        let description = String::from_str(&env, "Proof description");
+
+        // Mock the admin's authorization
+        env.mock_all_auths();
+
+        let result = env.as_contract(&contract_id, || {
+            methods::add_proof::add_proof(
+                &env,
+                proof_id.clone(),
+                campaign_id.clone(),
+                uri.clone(),
+                description.clone(),
+            )
+        });
+
+        assert!(result.is_ok());
+
+        // Verify proof was stored
+        let proof = env.as_contract(&contract_id, || {
+            storage::proof::get_proof(&env, &campaign_id, &proof_id).unwrap()
+        });
+        assert_eq!(proof.id, proof_id);
+        assert_eq!(proof.campaign_id, campaign_id);
+        assert_eq!(proof.uri, uri);
+        assert_eq!(proof.description, description);
+    }
+}
+````
+
+## File: contracts/crowdfunding-contract/src/TIPS.md
 ````markdown
 **Tips**:
 - Initialize the contract before deployment for more security (just as it is done in the project)
@@ -698,642 +1498,141 @@ pub(crate) fn remove_proof(env: &Env, campaign_id: &String, proof_id: &String) {
 ```
 ````
 
-## File: contracts/baf-crowdfunding-contract/test_snapshots/test/test_campaign_storage.1.json
-````json
-{
-  "generators": {
-    "address": 2,
-    "nonce": 0
-  },
-  "auth": [
-    []
-  ],
-  "ledger": {
-    "protocol_version": 22,
-    "sequence_number": 0,
-    "timestamp": 0,
-    "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "base_reserve": 0,
-    "min_persistent_entry_ttl": 4096,
-    "min_temp_entry_ttl": 16,
-    "max_entry_ttl": 6312000,
-    "ledger_entries": [
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-            "key": "ledger_key_contract_instance",
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-                "key": "ledger_key_contract_instance",
-                "durability": "persistent",
-                "val": {
-                  "contract_instance": {
-                    "executable": {
-                      "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                    },
-                    "storage": null
-                  }
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ],
-      [
-        {
-          "contract_code": {
-            "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_code": {
-                "ext": "v0",
-                "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-                "code": ""
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ]
-    ]
-  },
-  "events": []
+## File: contracts/crowdfunding-contract/tests/attestation_test.rs
+````rust
+#![cfg(test)]
+
+use soroban_sdk::{testutils::Address as _, Address, Env, String};
+
+#[test]
+fn test_proof_struct_creation() {
+    // Test that we can create proof data with String types
+    let env = Env::default();
+
+    // Create test proof data
+    let proof_id = String::from_str(&env, "proof-123");
+    let campaign_id = String::from_str(&env, "campaign-abc");
+    let uri = String::from_str(&env, "ipfs://QmProofHash123");
+    let description = String::from_str(&env, "Milestone completion proof");
+    let timestamp = env.ledger().timestamp();
+
+    // Verify we can create proof-like data with expected constraints
+    assert!(!proof_id.is_empty());
+    assert!(!campaign_id.is_empty());
+    assert!(!uri.is_empty());
+    assert!(!description.is_empty());
+    // Timestamp is valid (u64 type guarantees >= 0)
+    let _ = timestamp;
+}
+
+#[test]
+fn test_compilation_of_new_types() {
+    // This test ensures our new types compile correctly
+    let env = Env::default();
+    let creator = Address::generate(&env);
+
+    // Test that campaign with milestone fields compiles
+    use crowdfunding_contract::storage::structs::campaign::Campaign;
+    let campaign_id = String::from_str(&env, "test-campaign");
+    let title = String::from_str(&env, "Test Campaign");
+    let description = String::from_str(&env, "A test crowdfunding campaign");
+
+    let _campaign = Campaign {
+        id: campaign_id.clone(),
+        creator: creator.clone(),
+        title,
+        description,
+        goal: 1000,
+        min_donation: 10,
+        total_raised: 0,
+        supporters: 0,
+        milestones_count: 0,
+        current_milestone: 0,
+        withdrawable_amount: 0,
+    };
+
+    // Test that Proof struct compiles
+    use crowdfunding_contract::storage::structs::proof::Proof;
+    let proof_id = String::from_str(&env, "proof-1");
+    let uri = String::from_str(&env, "ipfs://QmProofHash");
+    let proof_description = String::from_str(&env, "Proof of milestone completion");
+    let _proof = Proof {
+        id: proof_id.clone(),
+        campaign_id: campaign_id.clone(),
+        uri,
+        description: proof_description,
+        timestamp: env.ledger().timestamp(),
+    };
+
+    // Test that Milestone struct compiles
+    use crowdfunding_contract::storage::structs::milestone::Milestone;
+    let milestone_description = String::from_str(&env, "First milestone");
+    let _milestone = Milestone {
+        campaign_id: campaign_id.clone(),
+        sequence: 1,
+        target_amount: 500,
+        description: milestone_description,
+        completed: false,
+        proof_id: None,
+        completed_at: None,
+    };
+
+    // Test DataKey variants compile
+    use crowdfunding_contract::storage::types::storage::DataKey;
+    let _campaign_key = DataKey::Campaign(campaign_id.clone());
+    let _proof_key = DataKey::Proof(campaign_id.clone(), proof_id.clone());
+    let _milestone_key = DataKey::Milestone(campaign_id.clone(), 1);
+    let _contribution_key = DataKey::Contribution(campaign_id, creator);
+
+    // Test milestone-related errors compile
+    use crowdfunding_contract::storage::types::error::Error;
+    let _error1 = Error::ProofNotFound;
+    let _error2 = Error::MilestoneNotFound;
+    let _error3 = Error::InvalidMilestoneAmount;
+    let _error4 = Error::MilestoneAlreadyCompleted;
+
+    // If we reach here, all our new types compile successfully
+    assert!(true);
+}
+
+#[test]
+fn test_milestone_validation_logic() {
+    // Test that milestone validation constraints work as expected
+    let env = Env::default();
+    let campaign_id = String::from_str(&env, "test-campaign");
+
+    // Test milestone sequence validation
+    let milestone1 = crowdfunding_contract::storage::structs::milestone::Milestone {
+        campaign_id: campaign_id.clone(),
+        sequence: 1,
+        target_amount: 300,
+        description: String::from_str(&env, "First milestone"),
+        completed: false,
+        proof_id: None,
+        completed_at: None,
+    };
+
+    let milestone2 = crowdfunding_contract::storage::structs::milestone::Milestone {
+        campaign_id: campaign_id.clone(),
+        sequence: 2,
+        target_amount: 600,
+        description: String::from_str(&env, "Second milestone"),
+        completed: false,
+        proof_id: None,
+        completed_at: None,
+    };
+
+    // Verify sequential ordering
+    assert!(milestone1.sequence < milestone2.sequence);
+    assert!(milestone1.target_amount < milestone2.target_amount);
+    assert_eq!(milestone1.campaign_id, milestone2.campaign_id);
 }
 ````
 
-## File: contracts/baf-crowdfunding-contract/test_snapshots/test/test_milestone_creation_logic.1.json
-````json
-{
-  "generators": {
-    "address": 3,
-    "nonce": 0
-  },
-  "auth": [
-    []
-  ],
-  "ledger": {
-    "protocol_version": 22,
-    "sequence_number": 0,
-    "timestamp": 0,
-    "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "base_reserve": 0,
-    "min_persistent_entry_ttl": 4096,
-    "min_temp_entry_ttl": 16,
-    "max_entry_ttl": 6312000,
-    "ledger_entries": [
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-            "key": "ledger_key_contract_instance",
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAHK3M",
-                "key": "ledger_key_contract_instance",
-                "durability": "persistent",
-                "val": {
-                  "contract_instance": {
-                    "executable": {
-                      "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                    },
-                    "storage": null
-                  }
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ],
-      [
-        {
-          "contract_code": {
-            "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_code": {
-                "ext": "v0",
-                "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-                "code": ""
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ]
-    ]
-  },
-  "events": []
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/test_snapshots/test/test_milestone_storage.1.json
-````json
-{
-  "generators": {
-    "address": 1,
-    "nonce": 0
-  },
-  "auth": [
-    []
-  ],
-  "ledger": {
-    "protocol_version": 22,
-    "sequence_number": 0,
-    "timestamp": 0,
-    "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "base_reserve": 0,
-    "min_persistent_entry_ttl": 4096,
-    "min_temp_entry_ttl": 16,
-    "max_entry_ttl": 6312000,
-    "ledger_entries": [
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": "ledger_key_contract_instance",
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": "ledger_key_contract_instance",
-                "durability": "persistent",
-                "val": {
-                  "contract_instance": {
-                    "executable": {
-                      "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                    },
-                    "storage": null
-                  }
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ],
-      [
-        {
-          "contract_code": {
-            "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_code": {
-                "ext": "v0",
-                "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-                "code": ""
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ]
-    ]
-  },
-  "events": []
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/test_snapshots/test/test_milestone_system.1.json
-````json
-{
-  "generators": {
-    "address": 1,
-    "nonce": 0
-  },
-  "auth": [
-    []
-  ],
-  "ledger": {
-    "protocol_version": 22,
-    "sequence_number": 0,
-    "timestamp": 0,
-    "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "base_reserve": 0,
-    "min_persistent_entry_ttl": 4096,
-    "min_temp_entry_ttl": 16,
-    "max_entry_ttl": 6312000,
-    "ledger_entries": [
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": "ledger_key_contract_instance",
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": "ledger_key_contract_instance",
-                "durability": "persistent",
-                "val": {
-                  "contract_instance": {
-                    "executable": {
-                      "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                    },
-                    "storage": null
-                  }
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ],
-      [
-        {
-          "contract_code": {
-            "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_code": {
-                "ext": "v0",
-                "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-                "code": ""
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ]
-    ]
-  },
-  "events": []
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/test_snapshots/test/test_milestone_validation_errors.1.json
-````json
-{
-  "generators": {
-    "address": 2,
-    "nonce": 0
-  },
-  "auth": [
-    []
-  ],
-  "ledger": {
-    "protocol_version": 22,
-    "sequence_number": 0,
-    "timestamp": 0,
-    "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "base_reserve": 0,
-    "min_persistent_entry_ttl": 4096,
-    "min_temp_entry_ttl": 16,
-    "max_entry_ttl": 6312000,
-    "ledger_entries": [
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-            "key": "ledger_key_contract_instance",
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-                "key": "ledger_key_contract_instance",
-                "durability": "persistent",
-                "val": {
-                  "contract_instance": {
-                    "executable": {
-                      "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                    },
-                    "storage": null
-                  }
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ],
-      [
-        {
-          "contract_code": {
-            "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_code": {
-                "ext": "v0",
-                "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-                "code": ""
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ]
-    ]
-  },
-  "events": []
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/test_snapshots/test/test_proof_and_milestone_validation.1.json
-````json
-{
-  "generators": {
-    "address": 1,
-    "nonce": 0
-  },
-  "auth": [
-    []
-  ],
-  "ledger": {
-    "protocol_version": 22,
-    "sequence_number": 0,
-    "timestamp": 0,
-    "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "base_reserve": 0,
-    "min_persistent_entry_ttl": 4096,
-    "min_temp_entry_ttl": 16,
-    "max_entry_ttl": 6312000,
-    "ledger_entries": [
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": "ledger_key_contract_instance",
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": "ledger_key_contract_instance",
-                "durability": "persistent",
-                "val": {
-                  "contract_instance": {
-                    "executable": {
-                      "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                    },
-                    "storage": null
-                  }
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ],
-      [
-        {
-          "contract_code": {
-            "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_code": {
-                "ext": "v0",
-                "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-                "code": ""
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ]
-    ]
-  },
-  "events": []
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/test_snapshots/test/test_proof_logging.1.json
-````json
-{
-  "generators": {
-    "address": 2,
-    "nonce": 0
-  },
-  "auth": [
-    []
-  ],
-  "ledger": {
-    "protocol_version": 22,
-    "sequence_number": 0,
-    "timestamp": 0,
-    "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "base_reserve": 0,
-    "min_persistent_entry_ttl": 4096,
-    "min_temp_entry_ttl": 16,
-    "max_entry_ttl": 6312000,
-    "ledger_entries": [
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-            "key": "ledger_key_contract_instance",
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAFCT4",
-                "key": "ledger_key_contract_instance",
-                "durability": "persistent",
-                "val": {
-                  "contract_instance": {
-                    "executable": {
-                      "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                    },
-                    "storage": null
-                  }
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ],
-      [
-        {
-          "contract_code": {
-            "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_code": {
-                "ext": "v0",
-                "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-                "code": ""
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ]
-    ]
-  },
-  "events": []
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/test_snapshots/test/test_proof_storage.1.json
-````json
-{
-  "generators": {
-    "address": 1,
-    "nonce": 0
-  },
-  "auth": [
-    []
-  ],
-  "ledger": {
-    "protocol_version": 22,
-    "sequence_number": 0,
-    "timestamp": 0,
-    "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
-    "base_reserve": 0,
-    "min_persistent_entry_ttl": 4096,
-    "min_temp_entry_ttl": 16,
-    "max_entry_ttl": 6312000,
-    "ledger_entries": [
-      [
-        {
-          "contract_data": {
-            "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-            "key": "ledger_key_contract_instance",
-            "durability": "persistent"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_data": {
-                "ext": "v0",
-                "contract": "CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD2KM",
-                "key": "ledger_key_contract_instance",
-                "durability": "persistent",
-                "val": {
-                  "contract_instance": {
-                    "executable": {
-                      "wasm": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-                    },
-                    "storage": null
-                  }
-                }
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ],
-      [
-        {
-          "contract_code": {
-            "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-          }
-        },
-        [
-          {
-            "last_modified_ledger_seq": 0,
-            "data": {
-              "contract_code": {
-                "ext": "v0",
-                "hash": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-                "code": ""
-              }
-            },
-            "ext": "v0"
-          },
-          4095
-        ]
-      ]
-    ]
-  },
-  "events": []
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/Cargo.toml
+## File: contracts/crowdfunding-contract/Cargo.toml
 ````toml
 [package]
-name = "baf-crowdfunding-contract"
+name = "crowdfunding-contract"
 version = "0.0.0"
 edition = "2021"
 publish = false
@@ -1349,7 +1648,7 @@ soroban-sdk = { workspace = true }
 soroban-sdk = { workspace = true, features = ["testutils"] }
 ````
 
-## File: contracts/baf-crowdfunding-contract/Makefile
+## File: contracts/crowdfunding-contract/Makefile
 ````
 default: build
 
@@ -1369,7 +1668,7 @@ clean:
 	cargo clean
 ````
 
-## File: contracts/milestone-nft-contract/src/integration/mod.rs
+## File: contracts/nft-contract/src/integration/mod.rs
 ````rust
 use soroban_sdk::{Address, BytesN, Env, String};
 
@@ -1499,7 +1798,7 @@ impl MilestoneNftContract {
 }
 ````
 
-## File: contracts/milestone-nft-contract/src/lib.rs
+## File: contracts/nft-contract/src/lib.rs
 ````rust
 #![no_std]
 
@@ -2082,10 +2381,10 @@ mod tests {
 }
 ````
 
-## File: contracts/milestone-nft-contract/Cargo.toml
+## File: contracts/nft-contract/Cargo.toml
 ````toml
 [package]
-name = "milestone_nft_contract"
+name = "nft_contract"
 version = "1.0.0"
 edition = "2021"
 publish = false
@@ -2104,9 +2403,9 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 testutils = ["soroban-sdk/testutils"]
 ````
 
-## File: contracts/milestone-nft-contract/README.md
+## File: contracts/nft-contract/README.md
 ````markdown
-# Milestone NFT Contract
+# NFT Contract
 
 A Soroban smart contract that creates NFTs representing milestones in the ReFinance crowdfunding platform. Each NFT represents a validated proof of milestone completion, providing transparency and trust in the crowdfunding process.
 
@@ -2427,779 +2726,18 @@ inherits = "release"
 debug-assertions = true
 ````
 
-## File: contracts/baf-crowdfunding-contract/src/events/proof.rs
-````rust
-use soroban_sdk::{symbol_short, Env, String};
-
-/// Event emitted when a proof is logged for a campaign
-pub(crate) fn proof_logged(env: &Env, campaign_id: &String, proof_id: &String) {
-    env.events().publish(
-        (symbol_short!("proof"), symbol_short!("logged")),
-        (campaign_id.clone(), proof_id.clone()),
-    );
-}
-
-/// Event emitted when a proof is validated
-pub(crate) fn proof_validated(env: &Env, campaign_id: &String, proof_id: &String) {
-    env.events().publish(
-        (symbol_short!("proof"), symbol_short!("validated")),
-        (campaign_id.clone(), proof_id.clone()),
-    );
-}
+## File: .gitignore
 ````
-
-## File: contracts/baf-crowdfunding-contract/src/methods/get_campaign.rs
-````rust
-use soroban_sdk::{Env, String};
-
-use crate::storage::{
-    campaign::get_campaign as read_campaign, structs::campaign::Campaign, types::error::Error,
-};
-
-pub fn get_campaign(env: &Env, campaign_id: &String) -> Result<Campaign, Error> {
-    let campaign = read_campaign(env, campaign_id)?;
-    Ok(campaign)
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/src/methods/get_proof.rs
-````rust
-use crate::storage::{proof::get_proof as read_proof, structs::proof::Proof, types::error::Error};
-use soroban_sdk::{Env, String};
-
-pub fn get_proof(env: &Env, campaign_id: &String, proof_id: &String) -> Result<Proof, Error> {
-    read_proof(env, campaign_id, proof_id)
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/src/storage/admin.rs
-````rust
-use soroban_sdk::{Address, Env};
-
-use super::types::storage::DataKey;
-
-pub fn has_admin(env: &Env) -> bool {
-    let key = DataKey::Admin;
-
-    env.storage().instance().has(&key)
-}
-
-pub fn set_admin(env: &Env, admin: &Address) {
-    let key = DataKey::Admin;
-
-    env.storage().instance().set(&key, admin);
-}
-
-pub fn get_admin(env: &Env) -> Address {
-    let key = DataKey::Admin;
-
-    env.storage().instance().get(&key).unwrap()
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/src/storage/campaign.rs
-````rust
-use crate::storage::{
-    structs::campaign::Campaign,
-    types::{error::Error, storage::DataKey},
-};
-use soroban_sdk::{Env, String};
-
-pub(crate) fn campaign_key(campaign_id: &String) -> DataKey {
-    DataKey::Campaign(campaign_id.clone())
-}
-
-pub(crate) fn has_campaign(env: &Env, campaign_id: &String) -> bool {
-    let key = campaign_key(campaign_id);
-    env.storage().persistent().has(&key)
-}
-
-pub(crate) fn set_campaign(env: &Env, campaign_id: &String, campaign: &Campaign) {
-    let key = campaign_key(campaign_id);
-    env.storage().persistent().set(&key, campaign);
-}
-
-pub(crate) fn get_campaign(env: &Env, campaign_id: &String) -> Result<Campaign, Error> {
-    let key = campaign_key(campaign_id);
-    env.storage()
-        .persistent()
-        .get(&key)
-        .ok_or(Error::CampaignNotFound)
-}
-
-pub(crate) fn remove_campaign(env: &Env, campaign_id: &String) {
-    let key = campaign_key(campaign_id);
-    env.storage().persistent().remove(&key);
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/src/storage/contribution.rs
-````rust
-use soroban_sdk::{Address, Env, String};
-
-use super::types::storage::DataKey;
-
-pub(crate) fn has_contribution(env: &Env, campaign_id: &String, contributor: &Address) -> bool {
-    let key = DataKey::Contribution(campaign_id.clone(), contributor.clone());
-
-    env.storage().persistent().has(&key)
-}
-
-pub(crate) fn set_contribution(
-    env: &Env,
-    campaign_id: &String,
-    contributor: &Address,
-    amount: i128,
-) {
-    let key = DataKey::Contribution(campaign_id.clone(), contributor.clone());
-
-    env.storage().persistent().set(&key, &amount);
-}
-
-pub(crate) fn get_contribution(env: &Env, campaign_id: &String, contributor: &Address) -> i128 {
-    let key = DataKey::Contribution(campaign_id.clone(), contributor.clone());
-
-    env.storage().persistent().get(&key).unwrap_or(0)
-}
-
-pub(crate) fn remove_contribution(env: &Env, campaign_id: &String, contributor: &Address) {
-    let key = DataKey::Contribution(campaign_id.clone(), contributor.clone());
-
-    env.storage().persistent().remove(&key);
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/src/storage/mod.rs
-````rust
-pub mod admin;
-pub mod campaign;
-pub mod contribution;
-pub mod milestone;
-pub mod proof;
-pub mod structs;
-pub mod token;
-pub mod types;
-````
-
-## File: contracts/baf-crowdfunding-contract/src/storage/token.rs
-````rust
-use soroban_sdk::{Address, Env};
-
-use super::types::storage::DataKey;
-
-pub fn set_token(env: &Env, token: &Address) {
-    let key = DataKey::Token;
-
-    env.storage().instance().set(&key, token);
-}
-
-pub fn get_token(env: &Env) -> Address {
-    let key = DataKey::Token;
-
-    env.storage().instance().get(&key).unwrap()
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/src/events/mod.rs
-````rust
-pub mod campaign;
-pub mod contract;
-pub mod contribute;
-pub mod milestone;
-pub mod proof;
-pub mod refund;
-````
-
-## File: contracts/baf-crowdfunding-contract/src/methods/add_campaign.rs
-````rust
-use soroban_sdk::{Address, Env, String};
-
-use crate::{
-    events,
-    storage::{
-        campaign::{has_campaign, set_campaign},
-        structs::campaign::Campaign,
-        types::error::Error,
-    },
-};
-
-pub fn add_campaign(
-    env: &Env,
-    campaign_id: String,
-    creator: Address,
-    title: String,
-    description: String,
-    goal: i128,
-    min_donation: i128,
-) -> Result<(), Error> {
-    // Verify creator authorization
-    creator.require_auth();
-
-    // Validate inputs
-    if goal <= 0 {
-        return Err(Error::InvalidGoalAmount);
-    }
-
-    if min_donation <= 0 || min_donation > goal {
-        return Err(Error::InvalidMinDonation);
-    }
-
-    // Check if campaign already exists
-    if has_campaign(env, &campaign_id) {
-        return Err(Error::CampaignAlreadyExists);
-    }
-
-    // Create campaign
-    let campaign = Campaign {
-        id: campaign_id.clone(),
-        creator: creator.clone(),
-        title,
-        description,
-        goal,
-        min_donation,
-        total_raised: 0,
-        supporters: 0,
-        milestones_count: 0,
-        current_milestone: 0,
-        withdrawable_amount: 0,
-    };
-
-    // Store campaign
-    set_campaign(env, &campaign_id, &campaign);
-
-    // Emit event
-    events::campaign::add_campaign(env, &creator, &goal);
-
-    Ok(())
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/src/methods/log_proof.rs
-````rust
-use crate::{
-    events,
-    storage::{admin::get_admin, proof::set_proof, structs::proof::Proof, types::error::Error},
-};
-use soroban_sdk::{Env, String};
-
-pub fn log_proof(
-    env: &Env,
-    proof_id: String,
-    campaign_id: String,
-    uri: String,
-    description: String,
-) -> Result<(), Error> {
-    let admin = get_admin(env);
-    admin.require_auth();
-
-    let proof = Proof {
-        id: proof_id.clone(),
-        campaign_id: campaign_id.clone(),
-        uri,
-        description,
-        timestamp: env.ledger().timestamp(),
-    };
-
-    set_proof(env, &campaign_id, &proof_id, &proof);
-
-    events::proof::proof_logged(env, &campaign_id, &proof_id);
-
-    Ok(())
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/src/methods/mod.rs
-````rust
-pub mod add_campaign;
-// pub mod contribute;  // Legacy - needs refactoring for String-based IDs
-pub mod get_campaign;
-pub mod get_proof;
-pub mod initialize;
-pub mod log_proof;
-pub mod milestone;
-pub mod proof_milestone;
-// pub mod refund;      // Legacy - needs refactoring for String-based IDs
-pub mod token;
-// pub mod withdraw;    // Legacy - needs refactoring for String-based IDs
-pub mod withdraw_milestone;
-````
-
-## File: contracts/baf-crowdfunding-contract/src/storage/structs/campaign.rs
-````rust
-use soroban_sdk::{contracttype, Address, String};
-
-#[derive(Clone)]
-#[contracttype]
-pub struct Campaign {
-    pub id: String, // Campaign identifier
-    pub creator: Address,
-    pub title: String,       // Campaign title
-    pub description: String, // Campaign description
-    pub goal: i128,
-    pub min_donation: i128,
-    pub total_raised: i128,
-    pub supporters: u32,
-
-    // Milestone Management
-    pub milestones_count: u32,     // Total milestones for this campaign
-    pub current_milestone: u32,    // Latest completed milestone (0 = none)
-    pub withdrawable_amount: i128, // Amount available for withdrawal
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/src/storage/structs/mod.rs
-````rust
-pub mod campaign;
-pub mod contribution;
-pub mod milestone;
-pub mod proof;
-````
-
-## File: contracts/baf-crowdfunding-contract/src/storage/types/error.rs
-````rust
-use soroban_sdk::contracterror;
-
-#[contracterror]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-#[repr(u32)]
-pub enum Error {
-    ContractInitialized = 0,
-    ContractNotInitialized = 1,
-    MathOverflow = 2,
-    MathUnderflow = 3,
-    CampaignNotFound = 4,
-    CampaignGoalExceeded = 5,
-    ContributionBelowMinimum = 6,
-    AmountMustBePositive = 7,
-    CampaignGoalNotReached = 8,
-    ContributionNotFound = 9,
-    CampaignAlreadyExists = 10,
-    ProofNotFound = 11,
-    InvalidGoalAmount = 12,
-    InvalidMinDonation = 13,
-    InvalidMilestoneAmount = 14,
-    MilestoneAmountNotIncreasing = 15,
-    MilestoneNotFound = 16,
-    MilestoneAlreadyCompleted = 17,
-    InsufficientFundsForMilestone = 18,
-    MilestoneNotInSequence = 19,
-    MilestoneNotCompleted = 20,
-    CannotWithdrawFutureMilestone = 21,
-    NoFundsToWithdraw = 22,
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/src/storage/types/storage.rs
-````rust
-use soroban_sdk::{contracttype, Address, String};
-
-#[derive(Clone)]
-#[contracttype]
-pub enum DataKey {
-    Admin,
-    Token,
-    Campaign(String),              // String-based campaign ID
-    Contribution(String, Address), // (campaign_id, contributor)
-    Proof(String, String),         // (campaign_id, proof_id)
-    Milestone(String, u32),        // (campaign_id, sequence)
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/src/lib.rs
-````rust
-#![no_std]
-
-mod contract;
-mod events;
-mod methods;
-pub mod storage;
-
-pub use contract::{CrowdfundingContract, CrowdfundingContractClient};
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use soroban_sdk::{testutils::Address as _, Address, Env, String};
-
-    #[test]
-    fn test_campaign_storage() {
-        let env = Env::default();
-        let creator = Address::generate(&env);
-
-        let campaign_id = String::from_str(&env, "test-campaign");
-        let title = String::from_str(&env, "Test Campaign");
-        let description = String::from_str(&env, "A test crowdfunding campaign");
-
-        let campaign = storage::structs::campaign::Campaign {
-            id: campaign_id.clone(),
-            creator: creator.clone(),
-            title: title.clone(),
-            description: description.clone(),
-            goal: 1000,
-            min_donation: 10,
-            total_raised: 0,
-            supporters: 0,
-            milestones_count: 0,
-            current_milestone: 0,
-            withdrawable_amount: 0,
-        };
-
-        // Test campaign storage
-        let contract_id = env.register(CrowdfundingContract, ());
-        env.as_contract(&contract_id, || {
-            storage::campaign::set_campaign(&env, &campaign_id, &campaign);
-        });
-        let retrieved = env.as_contract(&contract_id, || {
-            storage::campaign::get_campaign(&env, &campaign_id).unwrap()
-        });
-
-        assert_eq!(retrieved.id, campaign_id);
-        assert_eq!(retrieved.title, title);
-        assert_eq!(retrieved.goal, 1000);
-        assert_eq!(retrieved.milestones_count, 0);
-    }
-
-    #[test]
-    fn test_milestone_storage() {
-        let env = Env::default();
-
-        let campaign_id = String::from_str(&env, "test-campaign");
-        let description = String::from_str(&env, "First milestone");
-
-        let milestone = storage::structs::milestone::Milestone {
-            campaign_id: campaign_id.clone(),
-            sequence: 1,
-            target_amount: 500,
-            description: description.clone(),
-            completed: false,
-            proof_id: None,
-            completed_at: None,
-        };
-
-        // Test milestone storage
-        let contract_id = env.register(CrowdfundingContract, ());
-        env.as_contract(&contract_id, || {
-            storage::milestone::set_milestone(&env, &campaign_id, 1, &milestone);
-        });
-        let retrieved = env.as_contract(&contract_id, || {
-            storage::milestone::get_milestone(&env, &campaign_id, 1).unwrap()
-        });
-
-        assert_eq!(retrieved.campaign_id, campaign_id);
-        assert_eq!(retrieved.sequence, 1);
-        assert_eq!(retrieved.target_amount, 500);
-        assert_eq!(retrieved.description, description);
-        assert_eq!(retrieved.completed, false);
-    }
-
-    #[test]
-    fn test_proof_storage() {
-        let env = Env::default();
-
-        let campaign_id = String::from_str(&env, "test-campaign");
-        let proof_id = String::from_str(&env, "proof-1");
-        let uri = String::from_str(&env, "ipfs://proof1");
-        let description = String::from_str(&env, "Proof of milestone completion");
-
-        let proof = storage::structs::proof::Proof {
-            id: proof_id.clone(),
-            campaign_id: campaign_id.clone(),
-            uri: uri.clone(),
-            description: description.clone(),
-            timestamp: env.ledger().timestamp(),
-        };
-
-        // Test proof storage
-        let contract_id = env.register(CrowdfundingContract, ());
-        env.as_contract(&contract_id, || {
-            storage::proof::set_proof(&env, &campaign_id, &proof_id, &proof);
-        });
-        let retrieved = env.as_contract(&contract_id, || {
-            storage::proof::get_proof(&env, &campaign_id, &proof_id).unwrap()
-        });
-
-        assert_eq!(retrieved.id, proof_id);
-        assert_eq!(retrieved.campaign_id, campaign_id);
-        assert_eq!(retrieved.uri, uri);
-        assert_eq!(retrieved.description, description);
-    }
-
-    #[test]
-    fn test_milestone_creation_logic() {
-        let env = Env::default();
-        let creator = Address::generate(&env);
-        let admin = Address::generate(&env);
-
-        let contract_id = env.register(CrowdfundingContract, ());
-        // Set up admin and token
-        env.as_contract(&contract_id, || {
-            storage::admin::set_admin(&env, &admin);
-            storage::token::set_token(&env, &creator); // Use creator as token for simplicity
-        });
-
-        let campaign_id = String::from_str(&env, "test-campaign");
-        let title = String::from_str(&env, "Test Campaign");
-        let description = String::from_str(&env, "A test campaign");
-
-        // Create and store campaign
-        let campaign = storage::structs::campaign::Campaign {
-            id: campaign_id.clone(),
-            creator: creator.clone(),
-            title,
-            description,
-            goal: 1000,
-            min_donation: 10,
-            total_raised: 0,
-            supporters: 0,
-            milestones_count: 0,
-            current_milestone: 0,
-            withdrawable_amount: 0,
-        };
-
-        env.as_contract(&contract_id, || {
-            storage::campaign::set_campaign(&env, &campaign_id, &campaign);
-        });
-
-        // Test milestone creation method
-        let milestone_desc = String::from_str(&env, "First milestone");
-        let target_amount = 500i128;
-
-        let result = env.as_contract(&contract_id, || {
-            methods::milestone::create_milestone(
-                &env,
-                campaign_id.clone(),
-                target_amount,
-                milestone_desc,
-            )
-        });
-
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), 1);
-
-        // Verify milestone was created
-        let (milestone, updated_campaign) = env.as_contract(&contract_id, || {
-            let milestone = storage::milestone::get_milestone(&env, &campaign_id, 1).unwrap();
-            let updated_campaign = storage::campaign::get_campaign(&env, &campaign_id).unwrap();
-            (milestone, updated_campaign)
-        });
-        assert_eq!(milestone.sequence, 1);
-        assert_eq!(milestone.target_amount, target_amount);
-        assert_eq!(updated_campaign.milestones_count, 1);
-    }
-
-    #[test]
-    fn test_milestone_validation_errors() {
-        let env = Env::default();
-        let creator = Address::generate(&env);
-
-        let campaign_id = String::from_str(&env, "test-campaign");
-        let title = String::from_str(&env, "Test Campaign");
-        let description = String::from_str(&env, "A test campaign");
-
-        // Create campaign with goal of 1000
-        let campaign = storage::structs::campaign::Campaign {
-            id: campaign_id.clone(),
-            creator: creator.clone(),
-            title,
-            description,
-            goal: 1000,
-            min_donation: 10,
-            total_raised: 0,
-            supporters: 0,
-            milestones_count: 0,
-            current_milestone: 0,
-            withdrawable_amount: 0,
-        };
-
-        let contract_id = env.register(CrowdfundingContract, ());
-        env.as_contract(&contract_id, || {
-            storage::campaign::set_campaign(&env, &campaign_id, &campaign);
-        });
-
-        // Test invalid milestone amount (greater than goal)
-        let milestone_desc = String::from_str(&env, "Invalid milestone");
-        let invalid_target = 2000i128; // Greater than goal
-
-        let result = env.as_contract(&contract_id, || {
-            methods::milestone::create_milestone(&env, campaign_id, invalid_target, milestone_desc)
-        });
-
-        assert!(result.is_err());
-        assert_eq!(
-            result.unwrap_err(),
-            storage::types::error::Error::InvalidMilestoneAmount
-        );
-    }
-
-    #[test]
-    fn test_proof_logging() {
-        let env = Env::default();
-        let admin = Address::generate(&env);
-
-        let contract_id = env.register(CrowdfundingContract, ());
-        // Set up admin
-        env.as_contract(&contract_id, || {
-            storage::admin::set_admin(&env, &admin);
-        });
-
-        let proof_id = String::from_str(&env, "proof-1");
-        let campaign_id = String::from_str(&env, "test-campaign");
-        let uri = String::from_str(&env, "ipfs://proof1");
-        let description = String::from_str(&env, "Proof description");
-
-        let result = env.as_contract(&contract_id, || {
-            methods::log_proof::log_proof(
-                &env,
-                proof_id.clone(),
-                campaign_id.clone(),
-                uri.clone(),
-                description.clone(),
-            )
-        });
-
-        assert!(result.is_ok());
-
-        // Verify proof was stored
-        let proof = env.as_contract(&contract_id, || {
-            storage::proof::get_proof(&env, &campaign_id, &proof_id).unwrap()
-        });
-        assert_eq!(proof.id, proof_id);
-        assert_eq!(proof.campaign_id, campaign_id);
-        assert_eq!(proof.uri, uri);
-        assert_eq!(proof.description, description);
-    }
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/tests/attestation_test.rs
-````rust
-#![cfg(test)]
-
-use soroban_sdk::{testutils::Address as _, Address, Env, String};
-
-#[test]
-fn test_proof_struct_creation() {
-    // Test that we can create proof data with String types
-    let env = Env::default();
-
-    // Create test proof data
-    let proof_id = String::from_str(&env, "proof-123");
-    let campaign_id = String::from_str(&env, "campaign-abc");
-    let uri = String::from_str(&env, "ipfs://QmProofHash123");
-    let description = String::from_str(&env, "Milestone completion proof");
-    let timestamp = env.ledger().timestamp();
-
-    // Verify we can create proof-like data with expected constraints
-    assert!(!proof_id.is_empty());
-    assert!(!campaign_id.is_empty());
-    assert!(!uri.is_empty());
-    assert!(!description.is_empty());
-    // Timestamp is valid (u64 type guarantees >= 0)
-    let _ = timestamp;
-}
-
-#[test]
-fn test_compilation_of_new_types() {
-    // This test ensures our new types compile correctly
-    let env = Env::default();
-    let creator = Address::generate(&env);
-
-    // Test that campaign with milestone fields compiles
-    use baf_crowdfunding_contract::storage::structs::campaign::Campaign;
-    let campaign_id = String::from_str(&env, "test-campaign");
-    let title = String::from_str(&env, "Test Campaign");
-    let description = String::from_str(&env, "A test crowdfunding campaign");
-
-    let _campaign = Campaign {
-        id: campaign_id.clone(),
-        creator: creator.clone(),
-        title,
-        description,
-        goal: 1000,
-        min_donation: 10,
-        total_raised: 0,
-        supporters: 0,
-        milestones_count: 0,
-        current_milestone: 0,
-        withdrawable_amount: 0,
-    };
-
-    // Test that Proof struct compiles
-    use baf_crowdfunding_contract::storage::structs::proof::Proof;
-    let proof_id = String::from_str(&env, "proof-1");
-    let uri = String::from_str(&env, "ipfs://QmProofHash");
-    let proof_description = String::from_str(&env, "Proof of milestone completion");
-    let _proof = Proof {
-        id: proof_id.clone(),
-        campaign_id: campaign_id.clone(),
-        uri,
-        description: proof_description,
-        timestamp: env.ledger().timestamp(),
-    };
-
-    // Test that Milestone struct compiles
-    use baf_crowdfunding_contract::storage::structs::milestone::Milestone;
-    let milestone_description = String::from_str(&env, "First milestone");
-    let _milestone = Milestone {
-        campaign_id: campaign_id.clone(),
-        sequence: 1,
-        target_amount: 500,
-        description: milestone_description,
-        completed: false,
-        proof_id: None,
-        completed_at: None,
-    };
-
-    // Test DataKey variants compile
-    use baf_crowdfunding_contract::storage::types::storage::DataKey;
-    let _campaign_key = DataKey::Campaign(campaign_id.clone());
-    let _proof_key = DataKey::Proof(campaign_id.clone(), proof_id.clone());
-    let _milestone_key = DataKey::Milestone(campaign_id.clone(), 1);
-    let _contribution_key = DataKey::Contribution(campaign_id, creator);
-
-    // Test milestone-related errors compile
-    use baf_crowdfunding_contract::storage::types::error::Error;
-    let _error1 = Error::ProofNotFound;
-    let _error2 = Error::MilestoneNotFound;
-    let _error3 = Error::InvalidMilestoneAmount;
-    let _error4 = Error::MilestoneAlreadyCompleted;
-
-    // If we reach here, all our new types compile successfully
-    assert!(true);
-}
-
-#[test]
-fn test_milestone_validation_logic() {
-    // Test that milestone validation constraints work as expected
-    let env = Env::default();
-    let campaign_id = String::from_str(&env, "test-campaign");
-
-    // Test milestone sequence validation
-    let milestone1 = baf_crowdfunding_contract::storage::structs::milestone::Milestone {
-        campaign_id: campaign_id.clone(),
-        sequence: 1,
-        target_amount: 300,
-        description: String::from_str(&env, "First milestone"),
-        completed: false,
-        proof_id: None,
-        completed_at: None,
-    };
-
-    let milestone2 = baf_crowdfunding_contract::storage::structs::milestone::Milestone {
-        campaign_id: campaign_id.clone(),
-        sequence: 2,
-        target_amount: 600,
-        description: String::from_str(&env, "Second milestone"),
-        completed: false,
-        proof_id: None,
-        completed_at: None,
-    };
-
-    // Verify sequential ordering
-    assert!(milestone1.sequence < milestone2.sequence);
-    assert!(milestone1.target_amount < milestone2.target_amount);
-    assert_eq!(milestone1.campaign_id, milestone2.campaign_id);
-}
+# Rust's output directory
+target
+
+# Local settings
+.soroban
+.stellar
+temp
+repomix.config.json
+.repomixignore
+.env
 ````
 
 ## File: docs/TASKS.md
@@ -3211,6 +2749,50 @@ fn test_milestone_validation_logic() {
 (No current tasks)
 
 ## Completed Tasks
+
+### Rename baf-crowdfunding-contract to crowdfunding-contract - 2025-01-20 ✅
+Rename the baf-crowdfunding-contract directory and all references to use the simpler crowdfunding-contract name:
+- [x] Rename directory from baf-crowdfunding-contract to crowdfunding-contract
+- [x] Update Cargo.toml package name (baf-crowdfunding-contract → crowdfunding-contract)
+- [x] Update any imports or references in code (test file imports updated)
+- [x] Update documentation and README files
+- [x] Update REFINANCE.md file structure references
+- [x] Verify contract still compiles and works correctly
+- [x] All tests passing and contracts build to WASM successfully
+
+### Rename milestone-nft-contract to nft-contract - 2025-01-20 ✅
+Rename the milestone-nft-contract directory and all references to use the simpler nft-contract name:
+- [x] Rename directory from milestone-nft-contract to nft-contract
+- [x] Update Cargo.toml package name (milestone_nft_contract → nft_contract)
+- [x] Update any imports or references in code
+- [x] Update documentation and README files
+- [x] Update REFINANCE.md file structure references
+- [x] Verify contract still compiles and works correctly
+- [x] All tests passing and contracts build to WASM successfully
+
+### Update Contribute, Refund, and Withdraw Functions for String-based Campaign IDs - 2025-01-20 ✅
+Update legacy contribute, refund, and withdraw functions to work with the current contract architecture:
+- [x] Update contribute function to use String campaign_id instead of Address campaign_address
+- [x] Update refund function to use String campaign_id instead of Address campaign_address  
+- [x] Update withdraw function to use String campaign_id and proper creator authorization
+- [x] Fix contribute event to use String campaign_id
+- [x] Fix refund event to use String campaign_id
+- [x] Update methods/mod.rs to enable the updated functions
+- [x] Add functions to contract interface in contract.rs
+- [x] Fix event publishing to clone String values for Soroban SDK compatibility
+- [x] All tests passing successfully
+- [x] Contract compiles without errors
+
+### Refactor Method Names to Use Consistent add/get Pattern - 2025-01-20 ✅
+Update all method names to use consistent "add" and "get" prefixes instead of "create" and "log":
+- [x] Rename `create_milestone` to `add_milestone` in milestone.rs
+- [x] Rename `log_proof` to `add_proof` in log_proof.rs and rename file to add_proof.rs
+- [x] Update contract.rs to use new method names
+- [x] Update method imports in contract.rs
+- [x] Update mod.rs to reference renamed files
+- [x] Update any internal function calls to use new names
+- [x] Update documentation and README.md with new method names
+- [x] Test that contract compiles and functions work correctly
 
 ### Integrate Milestone Logic in Crowdfunding Contracts - 2025-01-20 ✅
 Implement milestone-based crowdfunding system with String-based identifiers including:
@@ -3273,161 +2855,6 @@ Complete implementation of milestone NFT contract for ReFinance crowdfunding pla
 - Soroban SDK client is auto-generated and available as CrowdfundingContractClient
 ````
 
-## File: .gitignore
-````
-# Rust's output directory
-target
-
-# Local settings
-.soroban
-.stellar
-temp
-repomix.config.json
-.repomixignore
-.env
-````
-
-## File: contracts/baf-crowdfunding-contract/src/storage/structs/proof.rs
-````rust
-use soroban_sdk::{contracttype, String};
-
-#[derive(Clone)]
-#[contracttype]
-pub struct Proof {
-    pub id: String,          // Proof identifier
-    pub campaign_id: String, // Which campaign this proof belongs to
-    pub uri: String,         // IPFS or external URI
-    pub description: String, // Description of the proof
-    pub timestamp: u64,      // When proof was submitted
-}
-````
-
-## File: contracts/baf-crowdfunding-contract/src/contract.rs
-````rust
-use soroban_sdk::{contract, contractimpl, Address, Env, String, Vec};
-
-use crate::{
-    methods::{
-        add_campaign::add_campaign,
-        get_campaign::get_campaign,
-        get_proof::get_proof,
-        initialize::initialize,
-        log_proof::log_proof,
-        milestone::{create_milestone, get_campaign_milestones, get_milestone},
-        proof_milestone::validate_milestone_with_proof,
-        withdraw_milestone::withdraw_milestone_funds,
-    },
-    storage::{
-        structs::{campaign::Campaign, milestone::Milestone, proof::Proof},
-        types::error::Error,
-    },
-};
-
-#[contract]
-pub struct CrowdfundingContract;
-
-#[contractimpl]
-impl CrowdfundingContract {
-    pub fn __constructor(env: Env, admin: Address, token: Address) -> Result<(), Error> {
-        initialize(&env, admin, token)
-    }
-
-    // === CAMPAIGN FUNCTIONS ===
-    pub fn create_campaign(
-        env: Env,
-        campaign_id: String,
-        creator: Address,
-        title: String,
-        description: String,
-        goal: i128,
-        min_donation: i128,
-    ) -> Result<(), Error> {
-        add_campaign(
-            &env,
-            campaign_id,
-            creator,
-            title,
-            description,
-            goal,
-            min_donation,
-        )
-    }
-
-    pub fn get_campaign(env: Env, campaign_id: String) -> Result<Campaign, Error> {
-        get_campaign(&env, &campaign_id)
-    }
-
-    // === MILESTONE FUNCTIONS ===
-    pub fn create_milestone(
-        env: Env,
-        campaign_id: String,
-        target_amount: i128,
-        description: String,
-    ) -> Result<u32, Error> {
-        create_milestone(&env, campaign_id, target_amount, description)
-    }
-
-    pub fn get_milestone(env: Env, campaign_id: String, sequence: u32) -> Result<Milestone, Error> {
-        get_milestone(&env, &campaign_id, sequence)
-    }
-
-    pub fn get_campaign_milestones(env: Env, campaign_id: String) -> Result<Vec<Milestone>, Error> {
-        get_campaign_milestones(&env, &campaign_id)
-    }
-
-    // === PROOF FUNCTIONS ===
-    pub fn log_proof(
-        env: Env,
-        proof_id: String,
-        campaign_id: String,
-        uri: String,
-        description: String,
-    ) -> Result<(), Error> {
-        log_proof(&env, proof_id, campaign_id, uri, description)
-    }
-
-    pub fn get_proof(env: Env, campaign_id: String, proof_id: String) -> Result<Proof, Error> {
-        get_proof(&env, &campaign_id, &proof_id)
-    }
-
-    pub fn validate_milestone_with_proof(
-        env: Env,
-        campaign_id: String,
-        milestone_sequence: u32,
-        proof_id: String,
-    ) -> Result<(), Error> {
-        validate_milestone_with_proof(&env, campaign_id, milestone_sequence, proof_id)
-    }
-
-    // === WITHDRAWAL FUNCTIONS ===
-    pub fn withdraw_milestone_funds(
-        env: Env,
-        campaign_id: String,
-        milestone_sequence: u32,
-    ) -> Result<i128, Error> {
-        withdraw_milestone_funds(&env, campaign_id, milestone_sequence)
-    }
-
-    // === LEGACY FUNCTIONS (commented out - need refactoring for String-based IDs) ===
-    // pub fn contribute(
-    //     env: Env,
-    //     contributor: Address,
-    //     campaign_address: Address,
-    //     amount: i128,
-    // ) -> Result<(), Error> {
-    //     contribute(&env, contributor, campaign_address, amount)
-    // }
-
-    // pub fn withdraw(env: Env, creator: Address) -> Result<(), Error> {
-    //     withdraw(&env, creator)
-    // }
-
-    // pub fn refund(env: Env, contributor: Address, campaign_address: Address) -> Result<(), Error> {
-    //     refund(&env, contributor, campaign_address)
-    // }
-}
-````
-
 ## File: README.md
 ````markdown
 # ReFinance - Transparent Crowdfunding Platform
@@ -3465,8 +2892,8 @@ The process works as follows:
 
 The platform consists of two main smart contracts:
 
-1. **Crowdfunding Contract** (`baf-crowdfunding-contract`): Core crowdfunding functionality with milestone-based fund management
-2. **Milestone NFT Contract** (`milestone-nft-contract`): NFT minting for verified milestones (future integration)
+1. **Crowdfunding Contract** (`crowdfunding-contract`): Core crowdfunding functionality with milestone-based fund management
+2. **NFT Contract** (`nft-contract`): NFT minting for verified milestones (future integration)
 
 ### Future Vision
 Our long-term goal is to take transparency one step further. We aim to integrate the system so that disbursements are made **directly to suppliers** (e.g., the materials provider or catering service), completely eliminating the possibility of fund diversion. This would ensure that every donated dollar directly translates into a good or service for the final beneficiary.
@@ -3576,20 +3003,20 @@ _Nota: devuelve `CBAH4Z5CNELXMN7PVW2SAAB6QVOID34SAQAFHJF7Q7JUNACRQEJX66MB`_
 | Función           | Descripción                                                              | Firma                                                                                  |
 | ----------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
 | `__constructor`   | Inicializa el contrato con admin y token                                 | `(admin: address, token: address) -> Result<(), Error>`                                |
-| `create_campaign` | Crea una campaña con ID único y metadatos                               | `(campaign_id: String, creator: address, title: String, description: String, goal: i128, min_donation: i128) -> Result<(), Error>` |
+| `add_campaign` | Crea una campaña con ID único y metadatos                               | `(campaign_id: String, creator: address, title: String, description: String, goal: i128, min_donation: i128) -> Result<(), Error>` |
 | `get_campaign`    | Obtiene los datos de una campaña por ID                                 | `(campaign_id: String) -> Result<Campaign, Error>`                               |
 
 #### Milestone Functions
 | Función               | Descripción                                                              | Firma                                                                                  |
 | --------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `create_milestone`    | Crea un hito para una campaña (solo creador)                           | `(campaign_id: String, target_amount: i128, description: String) -> Result<u32, Error>` |
+| `add_milestone`    | Crea un hito para una campaña (solo creador)                           | `(campaign_id: String, target_amount: i128, description: String) -> Result<u32, Error>` |
 | `get_milestone`       | Obtiene datos de un hito específico                                     | `(campaign_id: String, sequence: u32) -> Result<Milestone, Error>`                   |
 | `get_campaign_milestones` | Obtiene todos los hitos de una campaña                              | `(campaign_id: String) -> Result<Vec<Milestone>, Error>`                             |
 
 #### Proof Functions
 | Función               | Descripción                                                              | Firma                                                                                  |
 | --------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `log_proof`           | Registra una prueba para una campaña (solo admin)                       | `(proof_id: String, campaign_id: String, uri: String, description: String) -> Result<(), Error>` |
+| `add_proof`           | Registra una prueba para una campaña (solo admin)                       | `(proof_id: String, campaign_id: String, uri: String, description: String) -> Result<(), Error>` |
 | `get_proof`           | Obtiene los datos de una prueba específica                              | `(campaign_id: String, proof_id: String) -> Result<Proof, Error>`                    |
 | `validate_milestone_with_proof` | Valida un hito con prueba (solo admin)                        | `(campaign_id: String, milestone_sequence: u32, proof_id: String) -> Result<(), Error>` |
 
@@ -3613,7 +3040,7 @@ struct Campaign {
     min_donation: i128,
     total_raised: i128,
     supporters: u32,
-    
+
     // Milestone Management
     milestones_count: u32,       // Total milestones for this campaign
     current_milestone: u32,      // Latest completed milestone (0 = none)
@@ -3691,7 +3118,7 @@ enum Errors {
         --wasm target/wasm32v1-none/release/<contract_name>.optimized.wasm \
         --source admin \
         --network testnet \
-        -- create_campaign \
+        -- add_campaign \
         --creator <creator_public_key>
         --goal 100000000
 ```
@@ -3727,7 +3154,7 @@ enum Errors {
         --wasm target/wasm32v1-none/release/<contract_name>.optimized.wasm \
         --source admin \
         --network testnet \
-        -- log_proof \
+        -- add_proof \
         --campaign <creator_public_key> \
         --uri <proof_uri_64_bytes> \
         --desc <proof_description_128_bytes>

@@ -30,7 +30,7 @@ fn test_compilation_of_new_types() {
     let creator = Address::generate(&env);
 
     // Test that campaign with milestone fields compiles
-    use baf_crowdfunding_contract::storage::structs::campaign::Campaign;
+    use crowdfunding_contract::storage::structs::campaign::Campaign;
     let campaign_id = String::from_str(&env, "test-campaign");
     let title = String::from_str(&env, "Test Campaign");
     let description = String::from_str(&env, "A test crowdfunding campaign");
@@ -50,7 +50,7 @@ fn test_compilation_of_new_types() {
     };
 
     // Test that Proof struct compiles
-    use baf_crowdfunding_contract::storage::structs::proof::Proof;
+    use crowdfunding_contract::storage::structs::proof::Proof;
     let proof_id = String::from_str(&env, "proof-1");
     let uri = String::from_str(&env, "ipfs://QmProofHash");
     let proof_description = String::from_str(&env, "Proof of milestone completion");
@@ -63,7 +63,7 @@ fn test_compilation_of_new_types() {
     };
 
     // Test that Milestone struct compiles
-    use baf_crowdfunding_contract::storage::structs::milestone::Milestone;
+    use crowdfunding_contract::storage::structs::milestone::Milestone;
     let milestone_description = String::from_str(&env, "First milestone");
     let _milestone = Milestone {
         campaign_id: campaign_id.clone(),
@@ -76,14 +76,14 @@ fn test_compilation_of_new_types() {
     };
 
     // Test DataKey variants compile
-    use baf_crowdfunding_contract::storage::types::storage::DataKey;
+    use crowdfunding_contract::storage::types::storage::DataKey;
     let _campaign_key = DataKey::Campaign(campaign_id.clone());
     let _proof_key = DataKey::Proof(campaign_id.clone(), proof_id.clone());
     let _milestone_key = DataKey::Milestone(campaign_id.clone(), 1);
     let _contribution_key = DataKey::Contribution(campaign_id, creator);
 
     // Test milestone-related errors compile
-    use baf_crowdfunding_contract::storage::types::error::Error;
+    use crowdfunding_contract::storage::types::error::Error;
     let _error1 = Error::ProofNotFound;
     let _error2 = Error::MilestoneNotFound;
     let _error3 = Error::InvalidMilestoneAmount;
@@ -100,7 +100,7 @@ fn test_milestone_validation_logic() {
     let campaign_id = String::from_str(&env, "test-campaign");
 
     // Test milestone sequence validation
-    let milestone1 = baf_crowdfunding_contract::storage::structs::milestone::Milestone {
+    let milestone1 = crowdfunding_contract::storage::structs::milestone::Milestone {
         campaign_id: campaign_id.clone(),
         sequence: 1,
         target_amount: 300,
@@ -110,7 +110,7 @@ fn test_milestone_validation_logic() {
         completed_at: None,
     };
 
-    let milestone2 = baf_crowdfunding_contract::storage::structs::milestone::Milestone {
+    let milestone2 = crowdfunding_contract::storage::structs::milestone::Milestone {
         campaign_id: campaign_id.clone(),
         sequence: 2,
         target_amount: 600,

@@ -25,8 +25,13 @@ pub struct CrowdfundingContract;
 
 #[contractimpl]
 impl CrowdfundingContract {
-    pub fn __constructor(env: Env, admin: Address, token: Address) -> Result<(), Error> {
-        initialize(&env, admin, token)
+    pub fn __constructor(
+        env: Env,
+        admin: Address,
+        token: Address,
+        nft_contract: Address,
+    ) -> Result<(), Error> {
+        initialize(&env, admin, token, nft_contract)
     }
 
     // === CAMPAIGN FUNCTIONS ===

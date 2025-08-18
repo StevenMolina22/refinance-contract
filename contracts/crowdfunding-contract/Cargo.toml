@@ -1,18 +1,16 @@
 [package]
-name = "milestone_nft_contract"
-version = "1.0.0"
+name = "crowdfunding-contract"
+version = "0.0.0"
 edition = "2021"
 publish = false
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["lib", "cdylib"]
 doctest = false
 
 [dependencies]
 soroban-sdk = { workspace = true }
+nft_contract = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-
-[features]
-testutils = ["soroban-sdk/testutils"]

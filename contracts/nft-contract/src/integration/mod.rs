@@ -1,44 +1,8 @@
-use soroban_sdk::{Address, BytesN, Env, String};
+use soroban_sdk::{Address, BytesN, Env};
 
 use crate::{Error, MilestoneNftContract};
 
 impl MilestoneNftContract {
-    /// Called by crowdfunding contract when a proof is validated
-    /// This creates an NFT milestone for the validated proof
-    pub fn create_milestone_from_proof(
-        env: Env,
-        campaign_id: BytesN<32>,
-        proof_id: BytesN<32>,
-        _proof_uri: String,
-        proof_description: String,
-        recipient: Address,
-    ) -> Result<u32, Error> {
-        // Verify caller is the crowdfunding contract
-        let crowdfunding_contract: Address = env
-            .storage()
-            .instance()
-            .get(&crate::DataKey::CrowdfundingContract)
-            .ok_or(Error::InvalidCrowdfundingContract)?;
-
-        let caller = env.current_contract_address();
-        if caller != crowdfunding_contract {
-            return Err(Error::Unauthorized);
-        }
-
-        // Create milestone NFT URI based on proof
-        let milestone_uri = String::from_str(&env, "https://api.refinance.com/milestone/");
-
-        // Mint the milestone NFT
-        Self::mint_milestone(
-            env,
-            recipient,
-            milestone_uri,
-            campaign_id,
-            proof_id,
-            proof_description,
-        )
-    }
-
     /// Get all milestones for a specific campaign
     pub fn get_campaign_milestones(
         env: Env,

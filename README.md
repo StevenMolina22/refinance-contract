@@ -31,10 +31,17 @@ The process works as follows:
 
 ## Architecture
 
-The platform consists of two main smart contracts:
+The platform consists of two fully integrated smart contracts:
 
-1. **Crowdfunding Contract** (`baf-crowdfunding-contract`): Core crowdfunding functionality with milestone-based fund management
-2. **Milestone NFT Contract** (`milestone-nft-contract`): NFT minting for verified milestones (future integration)
+1. **Crowdfunding Contract** (`crowdfunding-contract`): Core crowdfunding functionality with milestone-based fund management
+2. **NFT Contract** (`nft-contract`): Automatically mints NFTs when milestones are validated
+
+**Integration Flow:**
+- When an admin validates a milestone with proof in the crowdfunding contract
+- The system automatically calls the NFT contract to mint a milestone NFT
+- The NFT is minted to the campaign creator as proof of achievement
+- Campaign and proof IDs are hashed (SHA256) for cross-contract compatibility
+- Each NFT contains immutable metadata linking it to the verified milestone
 
 ### Future Vision
 Our long-term goal is to take transparency one step further. We aim to integrate the system so that disbursements are made **directly to suppliers** (e.g., the materials provider or catering service), completely eliminating the possibility of fund diversion. This would ensure that every donated dollar directly translates into a good or service for the final beneficiary.
@@ -43,6 +50,15 @@ Our long-term goal is to take transparency one step further. We aim to integrate
 This project directly addresses the theme of transparency and trust in the social sector, using decentralized technologies to solve a critical problem. It's a practical solution that demonstrates the potential of blockchain to generate real and verifiable social impact.
 
 ## Setup
+
+### Prerequisites
+1. **Rust Toolchain**: Follow the official Stellar guide: https://developers.stellar.org/docs/build/smart-contracts/getting-started/setup
+2. **Both contracts must be deployed**: The crowdfunding contract requires the NFT contract address for initialization
+
+### Deployment Order
+1. Deploy NFT contract first
+2. Deploy crowdfunding contract with NFT contract address
+3. Initialize NFT contract with crowdfunding contract address for authorization
 
 ### Rust Toolchain
 
@@ -120,16 +136,54 @@ stellar keys address admin
 
 _Nota: devuelve `GDXAECCYWYW2QKQDTGVQUTC6CQEQR3REC3PKZKXOP76PJJ6V3FRYXCO3`_
 
-5️⃣ Deployar el contrato en la Testnet y obtener el contract ID
+5️⃣ Deploy NFT Contract first
 
 ```bash
-        stellar contract deploy \
-        --wasm target/wasm32v1-none/release/<contract_name>.optimized.wasm \
-        --source admin \
-        --network testnet \
-        -- \
-        --admin <admin_public_key>
-        --token <token_address>
+stellar contract deploy \
+--wasm target/wasm32v1-none/release/nft_contract.optimized.wasm \
+--source admin \
+--network testnet
+```
+
+6️⃣ Initialize NFT Contract
+
+```bash
+stellar contract invoke \
+--id <nft_contract_id> \
+--source admin \
+--network testnet \
+-- \
+initialize \
+--admin <admin_public_key> \
+--name "Milestone NFTs" \
+--symbol "MNFT" \
+--base_uri "https://api.refinance.com/" \
+--crowdfunding_contract <crowdfunding_contract_id_placeholder>
+```
+
+7️⃣ Deploy Crowdfunding Contract with NFT Contract Address
+
+```bash
+stellar contract deploy \
+--wasm target/wasm32v1-none/release/crowdfunding_contract.optimized.wasm \
+--source admin \
+--network testnet \
+-- \
+--admin <admin_public_key> \
+--token <token_address> \
+--nft_contract <nft_contract_id>
+```
+
+8️⃣ Update NFT Contract with actual Crowdfunding Contract ID
+
+```bash
+stellar contract invoke \
+--id <nft_contract_id> \
+--source admin \
+--network testnet \
+-- \
+update_crowdfunding_contract \
+--new_contract <crowdfunding_contract_id>
 ```
 
 _Nota: devuelve `CBAH4Z5CNELXMN7PVW2SAAB6QVOID34SAQAFHJF7Q7JUNACRQEJX66MB`_
@@ -143,7 +197,7 @@ _Nota: devuelve `CBAH4Z5CNELXMN7PVW2SAAB6QVOID34SAQAFHJF7Q7JUNACRQEJX66MB`_
 #### Campaign Functions
 | Función           | Descripción                                                              | Firma                                                                                  |
 | ----------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `__constructor`   | Inicializa el contrato con admin y token                                 | `(admin: address, token: address) -> Result<(), Error>`                                |
+| `__constructor`   | Inicializa el contrato con admin, token y NFT contract                   | `(admin: address, token: address, nft_contract: address) -> Result<(), Error>`         |
 | `add_campaign` | Crea una campaña con ID único y metadatos                               | `(campaign_id: String, creator: address, title: String, description: String, goal: i128, min_donation: i128) -> Result<(), Error>` |
 | `get_campaign`    | Obtiene los datos de una campaña por ID                                 | `(campaign_id: String) -> Result<Campaign, Error>`                               |
 
@@ -159,7 +213,7 @@ _Nota: devuelve `CBAH4Z5CNELXMN7PVW2SAAB6QVOID34SAQAFHJF7Q7JUNACRQEJX66MB`_
 | --------------------- | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
 | `add_proof`           | Registra una prueba para una campaña (solo admin)                       | `(proof_id: String, campaign_id: String, uri: String, description: String) -> Result<(), Error>` |
 | `get_proof`           | Obtiene los datos de una prueba específica                              | `(campaign_id: String, proof_id: String) -> Result<Proof, Error>`                    |
-| `validate_milestone_with_proof` | Valida un hito con prueba (solo admin)                        | `(campaign_id: String, milestone_sequence: u32, proof_id: String) -> Result<(), Error>` |
+| `validate_milestone_with_proof` | Valida un hito con prueba y minta NFT automáticamente (solo admin) | `(campaign_id: String, milestone_sequence: u32, proof_id: String) -> Result<(), Error>` |
 
 #### Withdrawal Functions
 | Función               | Descripción                                                              | Firma                                                                                  |
@@ -333,9 +387,11 @@ enum Errors {
 3. **Contribution**: Supporters contribute funds to the campaign
 4. **Proof Submission**: Foundation submits proof of milestone completion
 5. **Proof Validation**: Admin validates submitted proof and links it to milestone
-6. **Sequential Validation**: Milestones must be completed in order (1, 2, 3...)
-7. **Fund Release**: Only validated milestones enable incremental fund withdrawal
-8. **Transparency**: Public can verify progress through on-chain milestone status
+6. **Automatic NFT Minting**: System automatically mints NFT to campaign creator upon validation
+7. **Sequential Validation**: Milestones must be completed in order (1, 2, 3...)
+8. **Fund Release**: Only validated milestones enable incremental fund withdrawal
+9. **NFT Portfolio**: Creators build verifiable portfolio of achievements through milestone NFTs
+10. **Transparency**: Public can verify progress through on-chain milestone status and NFT records
 
 ### Example Workflow
 ```
@@ -345,19 +401,23 @@ enum Errors {
    - Milestone 2: $8,000 (Staff training completion)
    - Milestone 3: $10,000 (Final implementation)
 3. Foundation submits proof-1 with receipts
-4. Admin validates proof-1 → Milestone 1 completed
-5. Foundation can withdraw $5,000
-6. Process repeats for subsequent milestones
+4. Admin validates proof-1 → Milestone 1 completed → NFT #1 minted automatically
+5. Foundation can withdraw $5,000 + owns NFT proving milestone completion
+6. Process repeats for subsequent milestones, building NFT portfolio
+7. Each NFT contains immutable proof metadata and timestamp
 ```
 
 ## Benefits
 
-- **Trust**: Immutable on-chain proof of milestone completion
-- **Transparency**: Public verification of campaign progress through String-based IDs
+- **Trust**: Immutable on-chain proof of milestone completion with NFT verification
+- **Transparency**: Public verification of campaign progress through String-based IDs and NFT records
 - **Accountability**: Funds released only upon verified sequential milestones
 - **Progressive Funding**: Incremental fund release based on demonstrated progress
 - **User-Friendly**: String-based campaign identification for better integration
 - **Sequential Logic**: Prevents milestone skipping and ensures proper progression
+- **NFT Portfolio**: Foundations build verifiable track record through milestone achievement NFTs
+- **Cross-Contract Integration**: Seamless interaction between crowdfunding and NFT contracts
+- **Immutable Impact Records**: Each NFT serves as permanent proof of social impact achievement
 - **Decentralization**: Reduced reliance on centralized oversight
 
 ## Conclusion
