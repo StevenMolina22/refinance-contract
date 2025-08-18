@@ -1,4 +1,4 @@
-# Milestone NFT Contract
+# NFT Contract
 
 A Soroban smart contract that creates NFTs representing milestones in the ReFinance crowdfunding platform. Each NFT represents a validated proof of milestone completion, providing transparency and trust in the crowdfunding process.
 
