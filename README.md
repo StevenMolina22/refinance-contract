@@ -33,7 +33,7 @@ The process works as follows:
 
 The platform consists of two main smart contracts:
 
-1. **Crowdfunding Contract** (`baf-crowdfunding-contract`): Core crowdfunding functionality with milestone-based fund management
+1. **Crowdfunding Contract** (`crowdfunding-contract`): Core crowdfunding functionality with milestone-based fund management
 2. **NFT Contract** (`nft-contract`): NFT minting for verified milestones (future integration)
 
 ### Future Vision

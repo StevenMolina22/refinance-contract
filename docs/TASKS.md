@@ -6,6 +6,16 @@
 
 ## Completed Tasks
 
+### Rename baf-crowdfunding-contract to crowdfunding-contract - 2025-01-20 ✅
+Rename the baf-crowdfunding-contract directory and all references to use the simpler crowdfunding-contract name:
+- [x] Rename directory from baf-crowdfunding-contract to crowdfunding-contract
+- [x] Update Cargo.toml package name (baf-crowdfunding-contract → crowdfunding-contract)
+- [x] Update any imports or references in code (test file imports updated)
+- [x] Update documentation and README files
+- [x] Update REFINANCE.md file structure references
+- [x] Verify contract still compiles and works correctly
+- [x] All tests passing and contracts build to WASM successfully
+
 ### Rename milestone-nft-contract to nft-contract - 2025-01-20 ✅
 Rename the milestone-nft-contract directory and all references to use the simpler nft-contract name:
 - [x] Rename directory from milestone-nft-contract to nft-contract
