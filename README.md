@@ -34,7 +34,7 @@ The process works as follows:
 The platform consists of two main smart contracts:
 
 1. **Crowdfunding Contract** (`baf-crowdfunding-contract`): Core crowdfunding functionality with milestone-based fund management
-2. **Milestone NFT Contract** (`milestone-nft-contract`): NFT minting for verified milestones (future integration)
+2. **NFT Contract** (`nft-contract`): NFT minting for verified milestones (future integration)
 
 ### Future Vision
 Our long-term goal is to take transparency one step further. We aim to integrate the system so that disbursements are made **directly to suppliers** (e.g., the materials provider or catering service), completely eliminating the possibility of fund diversion. This would ensure that every donated dollar directly translates into a good or service for the final beneficiary.

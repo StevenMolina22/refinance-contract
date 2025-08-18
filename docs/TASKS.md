@@ -6,6 +6,16 @@
 
 ## Completed Tasks
 
+### Rename milestone-nft-contract to nft-contract - 2025-01-20 ✅
+Rename the milestone-nft-contract directory and all references to use the simpler nft-contract name:
+- [x] Rename directory from milestone-nft-contract to nft-contract
+- [x] Update Cargo.toml package name (milestone_nft_contract → nft_contract)
+- [x] Update any imports or references in code
+- [x] Update documentation and README files
+- [x] Update REFINANCE.md file structure references
+- [x] Verify contract still compiles and works correctly
+- [x] All tests passing and contracts build to WASM successfully
+
 ### Update Contribute, Refund, and Withdraw Functions for String-based Campaign IDs - 2025-01-20 ✅
 Update legacy contribute, refund, and withdraw functions to work with the current contract architecture:
 - [x] Update contribute function to use String campaign_id instead of Address campaign_address
