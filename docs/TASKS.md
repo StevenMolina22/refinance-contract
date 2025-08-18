@@ -6,6 +6,30 @@
 
 ## Completed Tasks
 
+### Implement Full Cross-Contract Integration Between Crowdfunding and NFT Contracts - 2025-01-21 ✅
+Complete the integration between crowdfunding-contract and nft-contract so that validated milestones automatically mint NFTs:
+- [x] Phase 1: Storage and Dependency Configuration
+  - [x] Add nft_contract dependency to crowdfunding-contract Cargo.toml
+  - [x] Add NftContract variant to DataKey enum in storage.rs
+  - [x] Update initialize function to accept and store NFT contract address
+  - [x] Update contract constructor to pass NFT contract address
+- [x] Phase 2: Core Logic Implementation
+  - [x] Implement String to BytesN<32> conversion using SHA256 hashing
+  - [x] Modify validate_milestone_with_proof to call NFT contract
+  - [x] Add cross-contract call to create_milestone_from_proof
+  - [x] Handle campaign creator as NFT recipient
+- [x] Phase 3: Testing and Validation
+  - [x] Verify contracts compile and build successfully
+  - [x] Test cross-contract dependency setup
+  - [x] Validate integration logic implementation
+- [x] Phase 4: Documentation Updates
+  - [x] Update README.md with integration details
+  - [x] Document new initialization parameters
+  - [x] Update deployment instructions
+  - [x] Update integration workflow documentation
+
+## Completed Tasks
+
 ### Rename baf-crowdfunding-contract to crowdfunding-contract - 2025-01-20 ✅
 Rename the baf-crowdfunding-contract directory and all references to use the simpler crowdfunding-contract name:
 - [x] Rename directory from baf-crowdfunding-contract to crowdfunding-contract

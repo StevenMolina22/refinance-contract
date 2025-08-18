@@ -277,6 +277,7 @@ dependencies = [
 name = "crowdfunding-contract"
 version = "0.0.0"
 dependencies = [
+ "nft_contract",
  "soroban-sdk",
 ]
 
